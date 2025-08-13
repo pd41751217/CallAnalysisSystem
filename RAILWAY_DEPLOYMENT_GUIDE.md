@@ -9,15 +9,15 @@
 ## 🏗️ Deployment Strategy
 
 You need to deploy **TWO SEPARATE SERVICES** in Railway:
-1. **Frontend Service** - React static site (using root Dockerfile)
-2. **Backend Service** - Node.js API server (using backend Dockerfile)
+1. **Frontend Service** - React static site (using Docker)
+2. **Backend Service** - Node.js API server (using Nixpacks)
 
 ## 🚀 Step-by-Step Deployment
 
 ### Step 1: Push Your Code
 ```bash
 git add .
-git commit -m "Fix Railway deployment - add root Dockerfile for frontend"
+git commit -m "Fix Railway deployment - use Nixpacks for backend, Docker for frontend"
 git push origin main
 ```
 
@@ -41,7 +41,7 @@ git push origin main
 2. Select "GitHub Repo"
 3. Choose your repository
 4. **IMPORTANT**: Set "Root Directory" to `backend`
-5. **IMPORTANT**: Select "Deploy from Dockerfile"
+5. **IMPORTANT**: Select "Deploy from GitHub" (not Dockerfile)
 6. Click "Deploy"
 
 ### Step 5: Add PostgreSQL Database
@@ -76,17 +76,16 @@ VITE_API_URL=https://your-backend-url.railway.app
 
 ## 🔧 Why This Approach Works
 
-### Root Dockerfile (Frontend):
-- ✅ Builds the frontend application
-- ✅ Uses `--legacy-peer-deps` for React 19 + MUI compatibility
+### Frontend (Docker):
+- ✅ Builds the frontend application with `--legacy-peer-deps`
 - ✅ Serves static files with `serve`
-- ✅ No root directory needed
+- ✅ Handles React 19 + MUI compatibility issues
 
-### Backend Dockerfile:
-- ✅ Builds the backend API server
-- ✅ Installs backend dependencies
-- ✅ Runs the Node.js server
-- ✅ Uses `backend/` root directory
+### Backend (Nixpacks):
+- ✅ Uses Railway's native Node.js builder
+- ✅ No Docker complexity
+- ✅ Direct `node src/server.js` execution
+- ✅ Avoids "cd" command issues
 
 ## 🚨 Common Issues & Solutions
 
@@ -94,11 +93,15 @@ VITE_API_URL=https://your-backend-url.railway.app
 **Problem**: Railway can't find the Dockerfile
 **Solution**: Ensure Dockerfile exists in the correct directory
 
-### Issue 2: "ERESOLVE unable to resolve dependency tree"
-**Problem**: React 19 + MUI compatibility issues
-**Solution**: Root Dockerfile uses `--legacy-peer-deps` flag
+### Issue 2: "The executable `cd` could not be found"
+**Problem**: Railway trying to use shell commands
+**Solution**: Use Nixpacks for backend, Docker for frontend
 
-### Issue 3: CORS Errors
+### Issue 3: "ERESOLVE unable to resolve dependency tree"
+**Problem**: React 19 + MUI compatibility issues
+**Solution**: Frontend Dockerfile uses `--legacy-peer-deps` flag
+
+### Issue 4: CORS Errors
 **Problem**: Frontend can't connect to backend
 **Solution**: Set CORS_ORIGIN in backend environment variables
 
@@ -107,13 +110,13 @@ VITE_API_URL=https://your-backend-url.railway.app
 ```
 your-repo/
 ├── Dockerfile                 # Root Dockerfile (for frontend)
-├── Dockerfile.backend         # Backend Dockerfile
 ├── railway.json               # Root Railway config (frontend)
 ├── backend/
 │   ├── package.json           # Backend dependencies
 │   ├── src/
 │   ├── railway.json           # Backend Railway config
-│   └── Dockerfile             # Backend Docker config
+│   ├── nixpacks.toml          # Backend Nixpacks config
+│   └── Dockerfile             # Backend Docker config (backup)
 ├── frontend/
 │   ├── package.json           # Frontend dependencies
 │   ├── src/
