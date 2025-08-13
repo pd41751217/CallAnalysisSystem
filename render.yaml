@@ -60,6 +60,7 @@ services:
     name: call-analysis-redis
     plan: starter
     maxmemoryPolicy: allkeys-lru
+    ipAllowList: []
 
 databases:
   - name: call-analysis-db
