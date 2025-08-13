@@ -1,6 +1,78 @@
 # 🔧 Railway Deployment Troubleshooting
 
-## 🚨 Issue: "No start command could be found"
+## 🚨 Issue 1: "npm: command not found"
+
+### Problem Description
+When deploying to Railway.com, you encounter the error:
+```
+/bin/bash: line 1: npm: command not found
+```
+
+This happens because Railway's build environment doesn't have Node.js and npm installed.
+
+### ✅ Solution Applied
+
+I've fixed this issue by:
+
+1. **Added nixpacks.toml files**
+   - Root level: `nixpacks.toml` - Ensures Node.js is available for the entire project
+   - Frontend level: `frontend/nixpacks.toml` - Explicitly configures Node.js for frontend
+
+2. **Created root package.json**
+   - Defines project structure with workspaces
+   - Specifies Node.js version requirements
+   - Provides build and start scripts
+
+3. **Updated Railway configurations**
+   - Added environment variables
+   - Explicitly configured build phases
+
+### 🔧 Files Modified
+
+#### `nixpacks.toml` (Root - New)
+```toml
+[phases.setup]
+nixPkgs = ["nodejs", "npm"]
+
+[phases.install]
+cmds = ["npm install"]
+
+[phases.build]
+cmds = ["npm run build"]
+
+[start]
+cmd = "npm start"
+```
+
+#### `frontend/nixpacks.toml` (New)
+```toml
+[phases.setup]
+nixPkgs = ["nodejs", "npm"]
+
+[phases.install]
+cmds = ["npm install"]
+
+[phases.build]
+cmds = ["npm run build"]
+
+[start]
+cmd = "npm start"
+```
+
+#### `package.json` (Root - New)
+```json
+{
+  "name": "call-analysis-system",
+  "version": "1.0.0",
+  "workspaces": ["frontend", "backend"],
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  }
+}
+```
+
+## 🚨 Issue 2: "No start command could be found"
 
 ### Problem Description
 When deploying to Railway.com, you encounter the error:
@@ -71,69 +143,52 @@ app.listen(PORT, () => {
 }
 ```
 
-#### `frontend/railway.json` (Updated)
-```json
-{
-  "$schema": "https://railway.app/railway.schema.json",
-  "build": {
-    "builder": "NIXPACKS"
-  },
-  "deploy": {
-    "startCommand": "npm start",
-    "healthcheckPath": "/",
-    "healthcheckTimeout": 300,
-    "restartPolicyType": "ON_FAILURE",
-    "restartPolicyMaxRetries": 10
-  }
-}
-```
-
 ## 🚀 Deployment Steps (Updated)
 
 ### Step 1: Push Changes
 ```bash
 git add .
-git commit -m "Fix Railway deployment - add Express server for frontend"
+git commit -m "Fix Railway deployment - add Node.js configuration and Express server"
 git push origin main
 ```
 
 ### Step 2: Deploy on Railway
 1. Go to your Railway project
-2. The frontend service should now deploy successfully
-3. Railway will find the `npm start` command and execute it
+2. Both services should now deploy successfully
+3. Railway will find Node.js and npm, then execute the start commands
 
 ### Step 3: Verify Deployment
-- Check that the frontend service shows "Deployed" status
+- Check that both services show "Deployed" status
 - Visit your frontend URL to ensure it loads correctly
+- Check backend health endpoint
 - Check logs for any remaining issues
 
 ## 🔍 Alternative Solutions
 
-If the above solution doesn't work, try these alternatives:
+If the above solutions don't work, try these alternatives:
 
-### Option 1: Use Static Site Deployment
-Instead of deploying as a Node.js service, deploy as a static site:
-1. Build the frontend locally: `npm run build`
-2. Upload the `dist` folder to Railway as a static site
-3. Configure Railway to serve static files
+### Option 1: Use Railway's Node.js Template
+1. Create a new service using Railway's Node.js template
+2. Point it to your repository
+3. Set the root directory appropriately
 
-### Option 2: Use Railway's Static Site Template
-1. Create a new service using Railway's static site template
-2. Point it to your `frontend/dist` directory
-3. Configure build command: `npm install && npm run build`
+### Option 2: Use Docker
+1. Create a Dockerfile for each service
+2. Use Railway's Docker deployment option
+3. Ensure Node.js is installed in the Docker image
 
 ### Option 3: Use Vercel for Frontend
 1. Deploy frontend to Vercel (free)
 2. Deploy backend to Railway
 3. Update CORS settings to allow Vercel domain
 
-## 🎯 Why This Solution Works
+## 🎯 Why These Solutions Work
 
-1. **Express Server**: Provides a proper Node.js server that Railway can start
-2. **Static File Serving**: Serves the built React app from the `dist` directory
-3. **Client-Side Routing**: Handles React Router routes properly
-4. **Environment Variables**: Uses `$PORT` from Railway environment
-5. **Build Process**: Ensures the app is built before serving
+1. **nixpacks.toml**: Explicitly tells Railway to install Node.js and npm
+2. **Root package.json**: Helps Railway understand the project structure
+3. **Express Server**: Provides a proper Node.js server that Railway can start
+4. **Static File Serving**: Serves the built React app correctly
+5. **Environment Variables**: Uses proper port configuration
 
 ## 🆘 Still Having Issues?
 
@@ -142,7 +197,7 @@ If you're still experiencing problems:
 1. **Check Railway Logs**: Look for specific error messages
 2. **Verify Dependencies**: Ensure all packages are in `package.json`
 3. **Test Locally**: Run `npm start` locally to ensure it works
-4. **Check Port Configuration**: Ensure the server uses the correct port
+4. **Check Node.js Version**: Ensure you're using Node.js 18+
 5. **Review Build Process**: Make sure the build completes successfully
 
 ## 📞 Support
