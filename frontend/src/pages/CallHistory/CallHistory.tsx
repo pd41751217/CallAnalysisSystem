@@ -228,7 +228,7 @@ const CallHistory: React.FC = () => {
     setFilteredCalls(filtered);
   };
 
-  const handleFilterChange = (field: keyof CallHistoryFilters, value: any) => {
+  const handleFilterChange = (field: keyof CallHistoryFilters, value: string | Date | null) => {
     setFilters(prev => ({ ...prev, [field]: value }));
   };
 
@@ -425,7 +425,7 @@ const CallHistory: React.FC = () => {
                 <DatePicker
                   label="Start Date"
                   value={filters.startDate}
-                  onChange={(date) => handleFilterChange('startDate', date)}
+                  onChange={(date: Date | null) => handleFilterChange('startDate', date)}
                   slotProps={{ textField: { fullWidth: true } }}
                 />
               </LocalizationProvider>
@@ -436,7 +436,7 @@ const CallHistory: React.FC = () => {
                 <DatePicker
                   label="End Date"
                   value={filters.endDate}
-                  onChange={(date) => handleFilterChange('endDate', date)}
+                  onChange={(date: Date | null) => handleFilterChange('endDate', date)}
                   slotProps={{ textField: { fullWidth: true } }}
                 />
               </LocalizationProvider>
