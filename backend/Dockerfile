@@ -19,5 +19,8 @@ RUN mkdir -p uploads
 # Expose port
 EXPOSE 3000
 
+# Set environment variable
+ENV NODE_ENV=production
+
 # Start the application
-CMD ["npm", "start"]
+CMD ["node", "src/server.js"]
