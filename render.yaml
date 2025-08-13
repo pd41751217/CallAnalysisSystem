@@ -55,14 +55,14 @@ services:
       - key: VITE_API_URL
         value: https://call-analysis-backend.onrender.com
 
+  # Redis Service
+  - type: redis
+    name: call-analysis-redis
+    plan: starter
+    maxmemoryPolicy: allkeys-lru
+
 databases:
   - name: call-analysis-db
     databaseName: call_analysis_db
     user: call_analysis_user
     plan: starter
-
-services:
-  - type: redis
-    name: call-analysis-redis
-    plan: starter
-    maxmemoryPolicy: allkeys-lru
