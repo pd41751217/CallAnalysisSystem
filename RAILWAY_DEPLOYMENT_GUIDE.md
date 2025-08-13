@@ -9,15 +9,15 @@
 ## 🏗️ Deployment Strategy
 
 You need to deploy **TWO SEPARATE SERVICES** in Railway:
-1. **Backend Service** - Node.js API server
-2. **Frontend Service** - React static site
+1. **Backend Service** - Node.js API server (using Docker)
+2. **Frontend Service** - React static site (using Docker)
 
 ## 🚀 Step-by-Step Deployment
 
 ### Step 1: Push Your Code
 ```bash
 git add .
-git commit -m "Fix Railway deployment configuration"
+git commit -m "Fix Railway deployment - use Docker for reliable deployment"
 git push origin main
 ```
 
@@ -33,14 +33,16 @@ git push origin main
 2. Select "GitHub Repo"
 3. Choose your repository
 4. **IMPORTANT**: Set "Root Directory" to `backend`
-5. Click "Deploy"
+5. **IMPORTANT**: Select "Deploy from Dockerfile"
+6. Click "Deploy"
 
 ### Step 4: Deploy Frontend Service
 1. In your Railway project, click "New Service" again
 2. Select "GitHub Repo"
 3. Choose your repository
 4. **IMPORTANT**: Set "Root Directory" to `frontend`
-5. Click "Deploy"
+5. **IMPORTANT**: Select "Deploy from Dockerfile"
+6. Click "Deploy"
 
 ### Step 5: Add PostgreSQL Database
 1. In your Railway project, click "New Service"
@@ -72,21 +74,18 @@ VITE_API_URL=https://your-backend-url.railway.app
 2. Copy the "Domain" URL
 3. Update environment variables with these URLs
 
-## 🔧 Alternative: Docker Deployment
+## 🔧 Why Docker Deployment?
 
-If you prefer Docker deployment:
+### Advantages:
+- ✅ **Reliable**: No dependency conflicts
+- ✅ **Consistent**: Same environment everywhere
+- ✅ **Fast**: Cached layers for faster builds
+- ✅ **Flexible**: Full control over build process
 
-### Backend Docker Deployment:
-1. Create new service
-2. Select "Deploy from Dockerfile"
-3. Set root directory to `backend`
-4. Railway will use `backend/Dockerfile`
-
-### Frontend Docker Deployment:
-1. Create new service
-2. Select "Deploy from Dockerfile"
-3. Set root directory to `frontend`
-4. Railway will use `frontend/Dockerfile`
+### Fixed Issues:
+- ❌ **Nixpacks errors**: "undefined variable 'npm'"
+- ❌ **Dependency conflicts**: React 19 + MUI compatibility
+- ❌ **Build failures**: Missing packages and type errors
 
 ## 🚨 Common Issues & Solutions
 
@@ -96,11 +95,11 @@ If you prefer Docker deployment:
 
 ### Issue 2: "npm: command not found"
 **Problem**: Node.js not available in build environment
-**Solution**: Railway auto-detects Node.js from package.json, ensure it exists
+**Solution**: Docker ensures Node.js is always available
 
-### Issue 3: "No start command found"
-**Problem**: Railway can't find how to start the application
-**Solution**: Ensure package.json has proper start script
+### Issue 3: "ERESOLVE unable to resolve dependency tree"
+**Problem**: React 19 + MUI compatibility issues
+**Solution**: Docker uses `--legacy-peer-deps` flag automatically
 
 ### Issue 4: CORS Errors
 **Problem**: Frontend can't connect to backend
@@ -156,6 +155,10 @@ npm run dev:frontend
 # Build locally
 npm run build:frontend
 npm run build:backend
+
+# Test Docker builds locally
+cd frontend && docker build -t frontend .
+cd backend && docker build -t backend .
 ```
 
 ### Environment Variables
