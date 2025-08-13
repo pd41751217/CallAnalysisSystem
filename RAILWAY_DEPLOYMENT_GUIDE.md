@@ -9,15 +9,15 @@
 ## 🏗️ Deployment Strategy
 
 You need to deploy **TWO SEPARATE SERVICES** in Railway:
-1. **Backend Service** - Node.js API server (using Docker)
-2. **Frontend Service** - React static site (using Docker)
+1. **Frontend Service** - React static site (using root Dockerfile)
+2. **Backend Service** - Node.js API server (using backend Dockerfile)
 
 ## 🚀 Step-by-Step Deployment
 
 ### Step 1: Push Your Code
 ```bash
 git add .
-git commit -m "Fix Railway deployment - use Docker for reliable deployment"
+git commit -m "Fix Railway deployment - add root Dockerfile for frontend"
 git push origin main
 ```
 
@@ -28,19 +28,19 @@ git push origin main
 4. Connect your GitHub account
 5. Select your repository
 
-### Step 3: Deploy Backend Service
+### Step 3: Deploy Frontend Service
 1. In your Railway project, click "New Service"
 2. Select "GitHub Repo"
 3. Choose your repository
-4. **IMPORTANT**: Set "Root Directory" to `backend`
+4. **IMPORTANT**: Leave "Root Directory" empty (use root of repo)
 5. **IMPORTANT**: Select "Deploy from Dockerfile"
 6. Click "Deploy"
 
-### Step 4: Deploy Frontend Service
+### Step 4: Deploy Backend Service
 1. In your Railway project, click "New Service" again
 2. Select "GitHub Repo"
 3. Choose your repository
-4. **IMPORTANT**: Set "Root Directory" to `frontend`
+4. **IMPORTANT**: Set "Root Directory" to `backend`
 5. **IMPORTANT**: Select "Deploy from Dockerfile"
 6. Click "Deploy"
 
@@ -74,34 +74,31 @@ VITE_API_URL=https://your-backend-url.railway.app
 2. Copy the "Domain" URL
 3. Update environment variables with these URLs
 
-## 🔧 Why Docker Deployment?
+## 🔧 Why This Approach Works
 
-### Advantages:
-- ✅ **Reliable**: No dependency conflicts
-- ✅ **Consistent**: Same environment everywhere
-- ✅ **Fast**: Cached layers for faster builds
-- ✅ **Flexible**: Full control over build process
+### Root Dockerfile (Frontend):
+- ✅ Builds the frontend application
+- ✅ Uses `--legacy-peer-deps` for React 19 + MUI compatibility
+- ✅ Serves static files with `serve`
+- ✅ No root directory needed
 
-### Fixed Issues:
-- ❌ **Nixpacks errors**: "undefined variable 'npm'"
-- ❌ **Dependency conflicts**: React 19 + MUI compatibility
-- ❌ **Build failures**: Missing packages and type errors
+### Backend Dockerfile:
+- ✅ Builds the backend API server
+- ✅ Installs backend dependencies
+- ✅ Runs the Node.js server
+- ✅ Uses `backend/` root directory
 
 ## 🚨 Common Issues & Solutions
 
-### Issue 1: "cd frontend && npm install" Error
-**Problem**: Railway trying to build entire repo as one service
-**Solution**: Deploy frontend and backend as separate services with correct root directories
+### Issue 1: "Dockerfile does not exist"
+**Problem**: Railway can't find the Dockerfile
+**Solution**: Ensure Dockerfile exists in the correct directory
 
-### Issue 2: "npm: command not found"
-**Problem**: Node.js not available in build environment
-**Solution**: Docker ensures Node.js is always available
-
-### Issue 3: "ERESOLVE unable to resolve dependency tree"
+### Issue 2: "ERESOLVE unable to resolve dependency tree"
 **Problem**: React 19 + MUI compatibility issues
-**Solution**: Docker uses `--legacy-peer-deps` flag automatically
+**Solution**: Root Dockerfile uses `--legacy-peer-deps` flag
 
-### Issue 4: CORS Errors
+### Issue 3: CORS Errors
 **Problem**: Frontend can't connect to backend
 **Solution**: Set CORS_ORIGIN in backend environment variables
 
@@ -109,33 +106,34 @@ VITE_API_URL=https://your-backend-url.railway.app
 
 ```
 your-repo/
+├── Dockerfile                 # Root Dockerfile (for frontend)
+├── Dockerfile.backend         # Backend Dockerfile
+├── railway.json               # Root Railway config (frontend)
 ├── backend/
-│   ├── package.json          # Backend dependencies
+│   ├── package.json           # Backend dependencies
 │   ├── src/
-│   ├── railway.json          # Backend Railway config
-│   └── Dockerfile            # Backend Docker config
+│   ├── railway.json           # Backend Railway config
+│   └── Dockerfile             # Backend Docker config
 ├── frontend/
-│   ├── package.json          # Frontend dependencies
+│   ├── package.json           # Frontend dependencies
 │   ├── src/
-│   ├── railway.json          # Frontend Railway config
-│   ├── server.js             # Express server for static files
-│   └── Dockerfile            # Frontend Docker config
-├── package.json              # Root package.json (for monorepo)
-└── railway.json              # Root Railway config
+│   ├── railway.json           # Frontend Railway config
+│   └── Dockerfile             # Frontend Docker config
+└── package.json               # Root package.json
 ```
 
 ## 🔍 Verification Steps
 
-1. **Backend Health Check**: Visit `https://your-backend-url.railway.app/health`
-2. **Frontend Load**: Visit `https://your-frontend-url.railway.app`
+1. **Frontend Load**: Visit `https://your-frontend-url.railway.app`
+2. **Backend Health Check**: Visit `https://your-backend-url.railway.app/health`
 3. **Database Connection**: Check backend logs for database connection
 4. **API Calls**: Test API endpoints from frontend
 
 ## 🎯 Expected URLs
 
 After deployment, you should have:
-- **Backend**: `https://your-backend-service.railway.app`
 - **Frontend**: `https://your-frontend-service.railway.app`
+- **Backend**: `https://your-backend-service.railway.app`
 - **Database**: Internal connection string
 
 ## 🆘 Troubleshooting
@@ -157,7 +155,7 @@ npm run build:frontend
 npm run build:backend
 
 # Test Docker builds locally
-cd frontend && docker build -t frontend .
+docker build -t frontend .
 cd backend && docker build -t backend .
 ```
 
