@@ -36,7 +36,7 @@ import { useNavigate } from 'react-router-dom';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
-import axios from 'axios';
+
 
 interface Call {
   id: string;
@@ -101,56 +101,66 @@ const CallHistory: React.FC = () => {
       const mockCalls = [
         {
           id: '1',
+          agentId: 'agent1',
           agentName: 'John Smith',
           customerNumber: '+1234567890',
           startTime: new Date(Date.now() - 86400000).toISOString(), // 1 day ago
+          endTime: new Date(Date.now() - 86400000 + 323000).toISOString(), // 1 day ago + 5:23
           duration: '5:23',
-          sentiment: 'positive',
-          status: 'completed',
+          sentiment: 'positive' as const,
+          status: 'completed' as const,
           team: 'Sales Team',
           score: 85
         },
         {
           id: '2',
+          agentId: 'agent2',
           agentName: 'Sarah Johnson',
           customerNumber: '+1987654321',
           startTime: new Date(Date.now() - 172800000).toISOString(), // 2 days ago
+          endTime: new Date(Date.now() - 172800000 + 225000).toISOString(), // 2 days ago + 3:45
           duration: '3:45',
-          sentiment: 'neutral',
-          status: 'completed',
+          sentiment: 'neutral' as const,
+          status: 'completed' as const,
           team: 'Support Team',
           score: 72
         },
         {
           id: '3',
+          agentId: 'agent3',
           agentName: 'Mike Davis',
           customerNumber: '+1555123456',
           startTime: new Date(Date.now() - 259200000).toISOString(), // 3 days ago
+          endTime: new Date(Date.now() - 259200000 + 432000).toISOString(), // 3 days ago + 7:12
           duration: '7:12',
-          sentiment: 'negative',
-          status: 'missed',
+          sentiment: 'negative' as const,
+          status: 'missed' as const,
           team: 'Sales Team',
           score: 45
         },
         {
           id: '4',
+          agentId: 'agent4',
           agentName: 'Lisa Wilson',
           customerNumber: '+1444333222',
           startTime: new Date(Date.now() - 345600000).toISOString(), // 4 days ago
+          endTime: new Date(Date.now() - 345600000 + 270000).toISOString(), // 4 days ago + 4:30
           duration: '4:30',
-          sentiment: 'positive',
-          status: 'completed',
+          sentiment: 'positive' as const,
+          status: 'completed' as const,
           team: 'Support Team',
           score: 90
         },
         {
           id: '5',
+          agentId: 'agent5',
           agentName: 'David Brown',
           customerNumber: '+1777888999',
           startTime: new Date(Date.now() - 432000000).toISOString(), // 5 days ago
+          endTime: new Date(Date.now() - 432000000 + 375000).toISOString(), // 5 days ago + 6:15
           duration: '6:15',
-          sentiment: 'neutral',
-          status: 'transferred',
+          sentiment: 'neutral' as const,
+          status: 'transferred' as const,
           team: 'Quality Assurance',
           score: 68
         }
@@ -234,7 +244,7 @@ const CallHistory: React.FC = () => {
     });
   };
 
-  const handlePageChange = (event: unknown, newPage: number) => {
+  const handlePageChange = (_event: unknown, newPage: number) => {
     setPage(newPage);
   };
 
@@ -330,7 +340,7 @@ const CallHistory: React.FC = () => {
           </Typography>
           
           <Grid container spacing={2}>
-            <Grid item xs={12} md={3}>
+            <Grid xs={12} md={3}>
               <TextField
                 fullWidth
                 label="Search"
@@ -346,7 +356,7 @@ const CallHistory: React.FC = () => {
               />
             </Grid>
             
-            <Grid item xs={12} md={3}>
+            <Grid xs={12} md={3}>
               <FormControl fullWidth>
                 <InputLabel>Agent</InputLabel>
                 <Select
@@ -362,7 +372,7 @@ const CallHistory: React.FC = () => {
               </FormControl>
             </Grid>
             
-            <Grid item xs={12} md={3}>
+            <Grid xs={12} md={3}>
               <FormControl fullWidth>
                 <InputLabel>Team</InputLabel>
                 <Select
@@ -378,7 +388,7 @@ const CallHistory: React.FC = () => {
               </FormControl>
             </Grid>
             
-            <Grid item xs={12} md={3}>
+            <Grid xs={12} md={3}>
               <FormControl fullWidth>
                 <InputLabel>Status</InputLabel>
                 <Select
@@ -394,7 +404,7 @@ const CallHistory: React.FC = () => {
               </FormControl>
             </Grid>
             
-            <Grid item xs={12} md={3}>
+            <Grid xs={12} md={3}>
               <FormControl fullWidth>
                 <InputLabel>Sentiment</InputLabel>
                 <Select
@@ -410,7 +420,7 @@ const CallHistory: React.FC = () => {
               </FormControl>
             </Grid>
             
-            <Grid item xs={12} md={3}>
+            <Grid xs={12} md={3}>
               <LocalizationProvider dateAdapter={AdapterDateFns}>
                 <DatePicker
                   label="Start Date"
@@ -421,7 +431,7 @@ const CallHistory: React.FC = () => {
               </LocalizationProvider>
             </Grid>
             
-            <Grid item xs={12} md={3}>
+            <Grid xs={12} md={3}>
               <LocalizationProvider dateAdapter={AdapterDateFns}>
                 <DatePicker
                   label="End Date"
@@ -432,7 +442,7 @@ const CallHistory: React.FC = () => {
               </LocalizationProvider>
             </Grid>
             
-            <Grid item xs={12} md={3}>
+            <Grid xs={12} md={3}>
               <Button
                 fullWidth
                 variant="outlined"

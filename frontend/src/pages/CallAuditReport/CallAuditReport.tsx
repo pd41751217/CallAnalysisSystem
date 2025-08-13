@@ -12,14 +12,14 @@ import {
   Tab,
   List,
   ListItem,
-  ListItemText,
+
   Chip,
   Button,
   TextField,
   InputAdornment,
   IconButton,
   Paper,
-  Divider,
+
   LinearProgress,
 } from '@mui/material';
 import {
@@ -40,8 +40,7 @@ import {
   CartesianGrid, 
   Tooltip, 
   ResponsiveContainer,
-  BarChart,
-  Bar,
+
   PieChart,
   Pie,
   Cell,
@@ -108,7 +107,7 @@ const CallAuditReport: React.FC = () => {
   const [filteredTranscript, setFilteredTranscript] = useState<TranscriptEntry[]>([]);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
+  const [duration] = useState(0);
 
   useEffect(() => {
     if (callId) {
@@ -145,7 +144,7 @@ const CallAuditReport: React.FC = () => {
     setFilteredTranscript(filtered);
   };
 
-  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
+  const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
   };
 
@@ -348,7 +347,7 @@ const CallAuditReport: React.FC = () => {
                     cy="50%"
                     outerRadius={80}
                     dataKey="value"
-                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                    label={({ name, percent }) => `${name} ${((percent || 0) * 100).toFixed(0)}%`}
                   >
                     {sentimentPieData.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={entry.color} />
