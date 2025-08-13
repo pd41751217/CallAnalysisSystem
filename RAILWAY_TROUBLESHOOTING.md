@@ -1,6 +1,73 @@
 # 🔧 Railway Deployment Troubleshooting
 
-## 🚨 Issue 1: "npm: command not found"
+## 🚨 Issue 1: "undefined variable 'npm'" in Nixpacks
+
+### Problem Description
+When deploying to Railway.com, you encounter the error:
+```
+error: undefined variable 'npm'
+at /app/.nixpacks/nixpkgs-*.nix:19:16
+```
+
+This happens because the custom nixpacks.toml configuration is causing issues with Railway's Nixpacks builder.
+
+### ✅ Solution Applied
+
+I've fixed this issue by:
+
+1. **Removed custom nixpacks.toml files**
+   - Deleted root `nixpacks.toml`
+   - Deleted `frontend/nixpacks.toml`
+   - Let Railway use its default Nixpacks configuration
+
+2. **Simplified Railway configurations**
+   - Removed custom environment variables
+   - Used standard Railway configuration format
+   - Let Railway auto-detect Node.js
+
+3. **Added Docker alternatives**
+   - Created `frontend/Dockerfile` for Docker deployment
+   - Created `backend/Dockerfile` for Docker deployment
+   - Provides alternative deployment method
+
+### 🔧 Files Modified
+
+#### Removed Files
+- `nixpacks.toml` (Root)
+- `frontend/nixpacks.toml`
+- `frontend/railway.toml`
+
+#### Simplified `railway.json` (Root)
+```json
+{
+  "$schema": "https://railway.app/railway.schema.json",
+  "build": {
+    "builder": "NIXPACKS"
+  },
+  "deploy": {
+    "startCommand": "npm start",
+    "healthcheckPath": "/health",
+    "healthcheckTimeout": 300,
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 10
+  }
+}
+```
+
+#### Added `frontend/Dockerfile`
+```dockerfile
+FROM node:18-alpine
+WORKDIR /app
+COPY package*.json ./
+RUN npm install
+COPY . .
+RUN npm run build
+RUN npm install -g serve
+EXPOSE 3000
+CMD ["serve", "-s", "dist", "-l", "3000"]
+```
+
+## 🚨 Issue 2: "npm: command not found"
 
 ### Problem Description
 When deploying to Railway.com, you encounter the error:
@@ -12,67 +79,9 @@ This happens because Railway's build environment doesn't have Node.js and npm in
 
 ### ✅ Solution Applied
 
-I've fixed this issue by:
+This should be resolved by letting Railway auto-detect Node.js from the package.json files.
 
-1. **Added nixpacks.toml files**
-   - Root level: `nixpacks.toml` - Ensures Node.js is available for the entire project
-   - Frontend level: `frontend/nixpacks.toml` - Explicitly configures Node.js for frontend
-
-2. **Created root package.json**
-   - Defines project structure with workspaces
-   - Specifies Node.js version requirements
-   - Provides build and start scripts
-
-3. **Updated Railway configurations**
-   - Added environment variables
-   - Explicitly configured build phases
-
-### 🔧 Files Modified
-
-#### `nixpacks.toml` (Root - New)
-```toml
-[phases.setup]
-nixPkgs = ["nodejs", "npm"]
-
-[phases.install]
-cmds = ["npm install"]
-
-[phases.build]
-cmds = ["npm run build"]
-
-[start]
-cmd = "npm start"
-```
-
-#### `frontend/nixpacks.toml` (New)
-```toml
-[phases.setup]
-nixPkgs = ["nodejs", "npm"]
-
-[phases.install]
-cmds = ["npm install"]
-
-[phases.build]
-cmds = ["npm run build"]
-
-[start]
-cmd = "npm start"
-```
-
-#### `package.json` (Root - New)
-```json
-{
-  "name": "call-analysis-system",
-  "version": "1.0.0",
-  "workspaces": ["frontend", "backend"],
-  "engines": {
-    "node": ">=18.0.0",
-    "npm": ">=8.0.0"
-  }
-}
-```
-
-## 🚨 Issue 2: "No start command could be found"
+## 🚨 Issue 3: "No start command could be found"
 
 ### Problem Description
 When deploying to Railway.com, you encounter the error:
@@ -96,66 +105,37 @@ I've fixed this issue by:
    - Created a proper `start` script: `npm run build && node server.js`
    - This ensures Railway can find and execute the start command
 
-3. **Updated Railway configuration**
-   - `railway.json` now uses `"startCommand": "npm start"`
-   - This points to the npm script which Railway can execute
-
-### 🔧 Files Modified
-
-#### `frontend/server.js` (New)
-```javascript
-import express from 'express';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-// Serve static files from the dist directory
-app.use(express.static(path.join(__dirname, 'dist')));
-
-// Handle client-side routing by serving index.html for all routes
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
-});
-
-app.listen(PORT, () => {
-  console.log(`Frontend server running on port ${PORT}`);
-});
-```
-
-#### `frontend/package.json` (Updated)
-```json
-{
-  "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
-    "preview": "vite preview",
-    "start": "npm run build && node server.js"
-  },
-  "dependencies": {
-    "express": "^4.18.2",
-    // ... other dependencies
-  }
-}
-```
-
 ## 🚀 Deployment Steps (Updated)
 
-### Step 1: Push Changes
+### Option 1: Standard Railway Deployment
+
+#### Step 1: Push Changes
 ```bash
 git add .
-git commit -m "Fix Railway deployment - add Node.js configuration and Express server"
+git commit -m "Fix Railway deployment - simplify configuration and add Docker alternatives"
 git push origin main
 ```
 
-### Step 2: Deploy on Railway
+#### Step 2: Deploy on Railway
 1. Go to your Railway project
-2. Both services should now deploy successfully
-3. Railway will find Node.js and npm, then execute the start commands
+2. Create new services pointing to your repository
+3. Set root directory to `backend` for backend service
+4. Set root directory to `frontend` for frontend service
+5. Railway should auto-detect Node.js and deploy successfully
+
+### Option 2: Docker Deployment
+
+#### Step 1: Deploy Backend with Docker
+1. Create new service in Railway
+2. Select "Deploy from Dockerfile"
+3. Point to your repository with root directory `backend`
+4. Railway will use the `backend/Dockerfile`
+
+#### Step 2: Deploy Frontend with Docker
+1. Create new service in Railway
+2. Select "Deploy from Dockerfile"
+3. Point to your repository with root directory `frontend`
+4. Railway will use the `frontend/Dockerfile`
 
 ### Step 3: Verify Deployment
 - Check that both services show "Deployed" status
@@ -172,33 +152,33 @@ If the above solutions don't work, try these alternatives:
 2. Point it to your repository
 3. Set the root directory appropriately
 
-### Option 2: Use Docker
-1. Create a Dockerfile for each service
-2. Use Railway's Docker deployment option
-3. Ensure Node.js is installed in the Docker image
-
-### Option 3: Use Vercel for Frontend
+### Option 2: Use Vercel for Frontend
 1. Deploy frontend to Vercel (free)
 2. Deploy backend to Railway
 3. Update CORS settings to allow Vercel domain
 
+### Option 3: Use Netlify for Frontend
+1. Deploy frontend to Netlify (free)
+2. Deploy backend to Railway
+3. Update CORS settings to allow Netlify domain
+
 ## 🎯 Why These Solutions Work
 
-1. **nixpacks.toml**: Explicitly tells Railway to install Node.js and npm
-2. **Root package.json**: Helps Railway understand the project structure
-3. **Express Server**: Provides a proper Node.js server that Railway can start
-4. **Static File Serving**: Serves the built React app correctly
-5. **Environment Variables**: Uses proper port configuration
+1. **Simplified Configuration**: Removes problematic custom Nixpacks configuration
+2. **Auto-detection**: Lets Railway auto-detect Node.js from package.json
+3. **Docker Alternative**: Provides reliable containerized deployment
+4. **Express Server**: Provides a proper Node.js server that Railway can start
+5. **Standard Approach**: Uses Railway's recommended deployment methods
 
 ## 🆘 Still Having Issues?
 
 If you're still experiencing problems:
 
-1. **Check Railway Logs**: Look for specific error messages
-2. **Verify Dependencies**: Ensure all packages are in `package.json`
-3. **Test Locally**: Run `npm start` locally to ensure it works
-4. **Check Node.js Version**: Ensure you're using Node.js 18+
-5. **Review Build Process**: Make sure the build completes successfully
+1. **Try Docker Deployment**: Use the Dockerfiles instead of Nixpacks
+2. **Check Railway Logs**: Look for specific error messages
+3. **Verify Dependencies**: Ensure all packages are in `package.json`
+4. **Test Locally**: Run `npm start` locally to ensure it works
+5. **Use Alternative Platforms**: Consider Vercel/Netlify for frontend
 
 ## 📞 Support
 
