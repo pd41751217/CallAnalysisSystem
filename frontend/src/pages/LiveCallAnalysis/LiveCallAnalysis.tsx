@@ -12,7 +12,16 @@ import {
   Chip,
   CircularProgress,
   Alert,
-
+  Paper,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Badge,
+  Divider,
+  LinearProgress,
 } from '@mui/material';
 import {
   SentimentSatisfied as PositiveIcon,
@@ -21,7 +30,9 @@ import {
   QuestionAnswer as QuestionIcon,
   Warning as WarningIcon,
   Event as EventIcon,
-
+  TrendingUp as TrendingUpIcon,
+  TrendingDown as TrendingDownIcon,
+  Circle as CircleIcon,
 } from '@mui/icons-material';
 import { useSocket } from '../../contexts/SocketContext';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
@@ -187,7 +198,7 @@ const LiveCallAnalysis: React.FC = () => {
 
       <Grid container spacing={3}>
         {/* Real-time Sentiment Trends */}
-        <Grid xs={12} lg={8}>
+        <Grid item xs={12} lg={8}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
@@ -209,7 +220,7 @@ const LiveCallAnalysis: React.FC = () => {
         </Grid>
 
         {/* Sentiment Distribution */}
-        <Grid xs={12} lg={4}>
+        <Grid item xs={12} lg={4}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
@@ -223,7 +234,7 @@ const LiveCallAnalysis: React.FC = () => {
                     cy="50%"
                     outerRadius={80}
                     dataKey="value"
-                    label={({ name, percent }) => `${name} ${((percent || 0) * 100).toFixed(0)}%`}
+                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
                   >
                     {sentimentPieData.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={entry.color} />
@@ -237,7 +248,7 @@ const LiveCallAnalysis: React.FC = () => {
         </Grid>
 
         {/* Real-time Call Sentiments List */}
-        <Grid xs={12} md={6}>
+        <Grid item xs={12} md={6}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
@@ -276,7 +287,7 @@ const LiveCallAnalysis: React.FC = () => {
         </Grid>
 
         {/* Real-time Questions Report */}
-        <Grid xs={12} md={6}>
+        <Grid item xs={12} md={6}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
@@ -313,7 +324,7 @@ const LiveCallAnalysis: React.FC = () => {
         </Grid>
 
         {/* Customer Vulnerability */}
-        <Grid xs={12} md={6}>
+        <Grid item xs={12} md={6}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
@@ -360,7 +371,7 @@ const LiveCallAnalysis: React.FC = () => {
         </Grid>
 
         {/* Event Details */}
-        <Grid xs={12} md={6}>
+        <Grid item xs={12} md={6}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
@@ -407,14 +418,14 @@ const LiveCallAnalysis: React.FC = () => {
         </Grid>
 
         {/* Live Metrics */}
-        <Grid xs={12}>
+        <Grid item xs={12}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
                 Live Performance Metrics
               </Typography>
               <Grid container spacing={3}>
-                <Grid xs={12} sm={6} md={3}>
+                <Grid item xs={12} sm={6} md={3}>
                   <Box textAlign="center">
                     <Typography variant="h4" color="success.main">
                       {sentiments.filter(s => s.sentiment === 'positive').length}
@@ -424,17 +435,17 @@ const LiveCallAnalysis: React.FC = () => {
                     </Typography>
                   </Box>
                 </Grid>
-                <Grid xs={12} sm={6} md={3}>
+                <Grid item xs={12} sm={6} md={3}>
                   <Box textAlign="center">
                     <Typography variant="h4" color="error.main">
-                      {vulnerabilities.filter(v => v.severity === 'high').length}
+                      {vulnerabilities.filter(v => v.severity === 'high' || v.severity === 'critical').length}
                     </Typography>
                     <Typography variant="body2" color="textSecondary">
                       High Risk Alerts
                     </Typography>
                   </Box>
                 </Grid>
-                <Grid xs={12} sm={6} md={3}>
+                <Grid item xs={12} sm={6} md={3}>
                   <Box textAlign="center">
                     <Typography variant="h4" color="primary.main">
                       {questions.filter(q => q.priority === 'high').length}
@@ -444,7 +455,7 @@ const LiveCallAnalysis: React.FC = () => {
                     </Typography>
                   </Box>
                 </Grid>
-                <Grid xs={12} sm={6} md={3}>
+                <Grid item xs={12} sm={6} md={3}>
                   <Box textAlign="center">
                     <Typography variant="h4" color="warning.main">
                       {events.filter(e => e.actionRequired).length}

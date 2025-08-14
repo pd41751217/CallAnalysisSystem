@@ -7,34 +7,12 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-# Dependencies
 node_modules
-*/node_modules
-
-# Build outputs
 dist
 dist-ssr
-*/dist
 *.local
 package-lock.json
 vite.config.ts.timestamp*.mjs
-
-# Environment files
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-*/env.example
-
-# Uploads and temporary files
-uploads/
-temp/
-tmp/
-
-# Database
-*.db
-*.sqlite
 
 # Editor directories and files
 .vscode/*
@@ -47,9 +25,4 @@ tmp/
 *.sln
 *.sw?
 
-# OS generated files
-Thumbs.db
-ehthumbs.db
-
-# Requirements (if any Python dependencies)
 requirements

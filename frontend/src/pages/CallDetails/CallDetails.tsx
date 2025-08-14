@@ -13,13 +13,13 @@ import {
   ListItemText,
   ListItemIcon,
   Chip,
-
+  Button,
   TextField,
   IconButton,
   Paper,
-
+  Divider,
   LinearProgress,
-
+  Avatar,
   Badge,
 } from '@mui/material';
 import {
@@ -34,7 +34,7 @@ import {
   Warning as WarningIcon,
   Error as ErrorIcon,
   Message as MessageIcon,
-
+  History as HistoryIcon,
 } from '@mui/icons-material';
 import { useSocket } from '../../contexts/SocketContext';
 import axios from 'axios';
@@ -97,7 +97,7 @@ const CallDetails: React.FC = () => {
   const [newMessage, setNewMessage] = useState('');
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
-  const [duration] = useState(0);
+  const [duration, setDuration] = useState(0);
   const { socket } = useSocket();
 
   useEffect(() => {
@@ -241,14 +241,14 @@ const CallDetails: React.FC = () => {
 
       <Grid container spacing={3}>
         {/* Call Information */}
-        <Grid xs={12} md={8}>
+        <Grid item xs={12} md={8}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
                 Call Information
               </Typography>
               <Grid container spacing={2}>
-                <Grid xs={6}>
+                <Grid item xs={6}>
                   <Typography variant="body2" color="textSecondary">
                     Call ID
                   </Typography>
@@ -256,7 +256,7 @@ const CallDetails: React.FC = () => {
                     {callDetails.id}
                   </Typography>
                 </Grid>
-                <Grid xs={6}>
+                <Grid item xs={6}>
                   <Typography variant="body2" color="textSecondary">
                     Status
                   </Typography>
@@ -266,7 +266,7 @@ const CallDetails: React.FC = () => {
                     size="small"
                   />
                 </Grid>
-                <Grid xs={6}>
+                <Grid item xs={6}>
                   <Typography variant="body2" color="textSecondary">
                     Agent
                   </Typography>
@@ -274,7 +274,7 @@ const CallDetails: React.FC = () => {
                     {callDetails.agentName}
                   </Typography>
                 </Grid>
-                <Grid xs={6}>
+                <Grid item xs={6}>
                   <Typography variant="body2" color="textSecondary">
                     Customer
                   </Typography>
@@ -282,7 +282,7 @@ const CallDetails: React.FC = () => {
                     {callDetails.customerNumber}
                   </Typography>
                 </Grid>
-                <Grid xs={6}>
+                <Grid item xs={6}>
                   <Typography variant="body2" color="textSecondary">
                     Duration
                   </Typography>
@@ -290,7 +290,7 @@ const CallDetails: React.FC = () => {
                     {callDetails.duration}
                   </Typography>
                 </Grid>
-                <Grid xs={6}>
+                <Grid item xs={6}>
                   <Typography variant="body2" color="textSecondary">
                     Sentiment
                   </Typography>
@@ -306,7 +306,7 @@ const CallDetails: React.FC = () => {
         </Grid>
 
         {/* Call Score */}
-        <Grid xs={12} md={4}>
+        <Grid item xs={12} md={4}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
@@ -330,7 +330,7 @@ const CallDetails: React.FC = () => {
         </Grid>
 
         {/* Volume Details */}
-        <Grid xs={12} md={6}>
+        <Grid item xs={12} md={6}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
@@ -374,7 +374,7 @@ const CallDetails: React.FC = () => {
         </Grid>
 
         {/* Compliance Looker */}
-        <Grid xs={12} md={6}>
+        <Grid item xs={12} md={6}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
@@ -412,7 +412,7 @@ const CallDetails: React.FC = () => {
         </Grid>
 
         {/* Audio Player */}
-        <Grid xs={12}>
+        <Grid item xs={12}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
@@ -447,7 +447,7 @@ const CallDetails: React.FC = () => {
         </Grid>
 
         {/* Transcript */}
-        <Grid xs={12} md={8}>
+        <Grid item xs={12} md={8}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
@@ -493,7 +493,7 @@ const CallDetails: React.FC = () => {
         </Grid>
 
         {/* Messages */}
-        <Grid xs={12} md={4}>
+        <Grid item xs={12} md={4}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>

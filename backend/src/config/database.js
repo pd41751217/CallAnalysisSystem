@@ -1,50 +1,46 @@
-import pg from 'pg';
+import pkg from 'pg';
+const { Pool } = pkg;
 import { logger } from '../utils/logger.js';
 
-const { Pool } = pg;
+// Create connection pool
+const pool = new Pool({
+  host: process.env.DB_HOST,
+  port: process.env.DB_PORT,
+  database: process.env.DB_NAME,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  max: 20, // Maximum number of clients in the pool
+  idleTimeoutMillis: 30000, // Close idle clients after 30 seconds
+  connectionTimeoutMillis: 2000, // Return an error after 2 seconds if connection could not be established
+});
 
-let pool;
+// Test the connection
+pool.on('connect', () => {
+  logger.info('Connected to PostgreSQL database');
+});
 
+pool.on('error', (err) => {
+  logger.error('Unexpected error on idle client', err);
+  process.exit(-1);
+});
+
+// Connect to database
 export const connectDB = async () => {
   try {
-    // Use DATABASE_URL for production (Render.com) or individual config for local development
-    const config = process.env.DATABASE_URL ? {
-      connectionString: process.env.DATABASE_URL,
-      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
-    } : {
-      host: process.env.DB_HOST || 'localhost',
-      port: process.env.DB_PORT || 5432,
-      database: process.env.DB_NAME || 'call_analysis_db',
-      user: process.env.DB_USER || 'postgres',
-      password: process.env.DB_PASSWORD || 'your_password',
-    };
-
-    pool = new Pool(config);
-
-    // Test the connection
     const client = await pool.connect();
-    logger.info('Database connected successfully');
+    logger.info('Database connection established successfully');
     client.release();
-
-    return pool;
+    return true;
   } catch (error) {
     logger.error('Database connection failed:', error.message);
-    throw error;
+    throw error; // Throw error instead of exiting process
   }
 };
 
-export const getPool = () => {
-  if (!pool) {
-    throw new Error('Database not connected. Call connectDB() first.');
-  }
-  return pool;
-};
-
-// Query function for executing SQL queries
+// Query function
 export const query = async (text, params) => {
   const start = Date.now();
   try {
-    const pool = getPool();
     const res = await pool.query(text, params);
     const duration = Date.now() - start;
     logger.debug('Executed query', { text, duration, rows: res.rowCount });
@@ -55,9 +51,15 @@ export const query = async (text, params) => {
   }
 };
 
-export const closeDB = async () => {
-  if (pool) {
-    await pool.end();
-    logger.info('Database connection closed');
-  }
+// Get client for transactions
+export const getClient = () => {
+  return pool.connect();
 };
+
+// Close pool
+export const closePool = async () => {
+  await pool.end();
+  logger.info('Database pool closed');
+};
+
+export default pool;

@@ -13,7 +13,8 @@ import {
   TrendingUp as TrendingUpIcon,
   TrendingDown as TrendingDownIcon,
   VolumeUp as VolumeIcon,
-
+  MusicNote as MusicIcon,
+  VolumeOff as SilenceIcon,
   Chat as ChatIcon,
 } from '@mui/icons-material';
 import { 
@@ -138,7 +139,7 @@ const OverviewDashboard: React.FC = () => {
 
       {/* Key Metrics */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid xs={12} sm={6} md={3}>
+        <Grid item xs={12} sm={6} md={3}>
           <Card>
             <CardContent>
               <Box display="flex" alignItems="center">
@@ -155,14 +156,18 @@ const OverviewDashboard: React.FC = () => {
               <LinearProgress 
                 variant="determinate" 
                 value={stats.productivity} 
-                color="success"
-                sx={{ mt: 2 }}
+                sx={{ 
+                  mt: 2,
+                  '& .MuiLinearProgress-bar': {
+                    backgroundColor: '#4caf50'
+                  }
+                }}
               />
             </CardContent>
           </Card>
         </Grid>
 
-        <Grid xs={12} sm={6} md={3}>
+        <Grid item xs={12} sm={6} md={3}>
           <Card>
             <CardContent>
               <Box display="flex" alignItems="center">
@@ -179,14 +184,18 @@ const OverviewDashboard: React.FC = () => {
               <LinearProgress 
                 variant="determinate" 
                 value={stats.unproductivity} 
-                color="error"
-                sx={{ mt: 2 }}
+                sx={{ 
+                  mt: 2,
+                  '& .MuiLinearProgress-bar': {
+                    backgroundColor: '#f44336'
+                  }
+                }}
               />
             </CardContent>
           </Card>
         </Grid>
 
-        <Grid xs={12} sm={6} md={3}>
+        <Grid item xs={12} sm={6} md={3}>
           <Card>
             <CardContent>
               <Box display="flex" alignItems="center">
@@ -207,7 +216,7 @@ const OverviewDashboard: React.FC = () => {
           </Card>
         </Grid>
 
-        <Grid xs={12} sm={6} md={3}>
+        <Grid item xs={12} sm={6} md={3}>
           <Card>
             <CardContent>
               <Box display="flex" alignItems="center">
@@ -231,7 +240,7 @@ const OverviewDashboard: React.FC = () => {
 
       <Grid container spacing={3}>
         {/* Productivity, Speech, Silence, and Crosstalk Chart */}
-        <Grid xs={12} lg={8}>
+        <Grid item xs={12} lg={8}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
@@ -282,7 +291,7 @@ const OverviewDashboard: React.FC = () => {
         </Grid>
 
         {/* Call Type Distribution */}
-        <Grid xs={12} lg={4}>
+        <Grid item xs={12} lg={4}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
@@ -296,7 +305,7 @@ const OverviewDashboard: React.FC = () => {
                     cy="50%"
                     outerRadius={120}
                     dataKey="value"
-                    label={({ name, percent }) => `${name} ${((percent || 0) * 100).toFixed(0)}%`}
+                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
                   >
                     {callTypeData.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={entry.color} />
@@ -310,7 +319,7 @@ const OverviewDashboard: React.FC = () => {
         </Grid>
 
         {/* Speech Analysis Breakdown */}
-        <Grid xs={12} md={6}>
+        <Grid item xs={12} md={6}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
@@ -334,7 +343,7 @@ const OverviewDashboard: React.FC = () => {
         </Grid>
 
         {/* Detailed Metrics */}
-        <Grid xs={12} md={6}>
+        <Grid item xs={12} md={6}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
@@ -348,8 +357,12 @@ const OverviewDashboard: React.FC = () => {
                 <LinearProgress 
                   variant="determinate" 
                   value={stats.speech} 
-                  color="success"
-                  sx={{ mb: 2 }}
+                  sx={{ 
+                    mb: 2,
+                    '& .MuiLinearProgress-bar': {
+                      backgroundColor: '#4caf50'
+                    }
+                  }}
                 />
 
                 <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
@@ -359,8 +372,12 @@ const OverviewDashboard: React.FC = () => {
                 <LinearProgress 
                   variant="determinate" 
                   value={stats.silence} 
-                  color="primary"
-                  sx={{ mb: 2 }}
+                  sx={{ 
+                    mb: 2,
+                    '& .MuiLinearProgress-bar': {
+                      backgroundColor: '#9e9e9e'
+                    }
+                  }}
                 />
 
                 <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
@@ -370,8 +387,12 @@ const OverviewDashboard: React.FC = () => {
                 <LinearProgress 
                   variant="determinate" 
                   value={stats.crosstalk} 
-                  color="warning"
-                  sx={{ mb: 2 }}
+                  sx={{ 
+                    mb: 2,
+                    '& .MuiLinearProgress-bar': {
+                      backgroundColor: '#ff9800'
+                    }
+                  }}
                 />
 
                 <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
@@ -381,7 +402,11 @@ const OverviewDashboard: React.FC = () => {
                 <LinearProgress 
                   variant="determinate" 
                   value={stats.music} 
-                  color="info"
+                  sx={{ 
+                    '& .MuiLinearProgress-bar': {
+                      backgroundColor: '#2196f3'
+                    }
+                  }}
                 />
               </Box>
             </CardContent>
@@ -389,7 +414,7 @@ const OverviewDashboard: React.FC = () => {
         </Grid>
 
         {/* Performance Trends */}
-        <Grid xs={12}>
+        <Grid item xs={12}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>

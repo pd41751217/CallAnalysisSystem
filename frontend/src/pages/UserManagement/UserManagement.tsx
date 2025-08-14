@@ -97,51 +97,46 @@ const UserManagement: React.FC = () => {
           id: '1',
           name: 'John Smith',
           email: 'john.smith@callanalysis.com',
-          role: 'agent' as const,
+          role: 'agent',
           team: 'Sales Team',
-          status: 'active' as const,
-          lastActive: new Date().toISOString(),
-          createdAt: new Date(Date.now() - 86400000 * 30).toISOString() // 30 days ago
+          status: 'active',
+          lastActive: new Date().toISOString()
         },
         {
           id: '2',
           name: 'Sarah Johnson',
           email: 'sarah.johnson@callanalysis.com',
-          role: 'team_lead' as const,
+          role: 'team_lead',
           team: 'Support Team',
-          status: 'active' as const,
-          lastActive: new Date().toISOString(),
-          createdAt: new Date(Date.now() - 86400000 * 45).toISOString() // 45 days ago
+          status: 'active',
+          lastActive: new Date().toISOString()
         },
         {
           id: '3',
           name: 'Mike Davis',
           email: 'mike.davis@callanalysis.com',
-          role: 'agent' as const,
+          role: 'agent',
           team: 'Sales Team',
-          status: 'active' as const,
-          lastActive: new Date().toISOString(),
-          createdAt: new Date(Date.now() - 86400000 * 60).toISOString() // 60 days ago
+          status: 'active',
+          lastActive: new Date().toISOString()
         },
         {
           id: '4',
           name: 'Lisa Wilson',
           email: 'lisa.wilson@callanalysis.com',
-          role: 'agent' as const,
+          role: 'agent',
           team: 'Support Team',
-          status: 'inactive' as const,
-          lastActive: new Date(Date.now() - 86400000).toISOString(),
-          createdAt: new Date(Date.now() - 86400000 * 90).toISOString() // 90 days ago
+          status: 'inactive',
+          lastActive: new Date(Date.now() - 86400000).toISOString()
         },
         {
           id: '5',
           name: 'David Brown',
           email: 'david.brown@callanalysis.com',
-          role: 'admin' as const,
+          role: 'admin',
           team: 'Quality Assurance',
-          status: 'active' as const,
-          lastActive: new Date().toISOString(),
-          createdAt: new Date(Date.now() - 86400000 * 120).toISOString() // 120 days ago
+          status: 'active',
+          lastActive: new Date().toISOString()
         }
       ];
       
@@ -240,7 +235,7 @@ const UserManagement: React.FC = () => {
     }
   };
 
-  const handlePageChange = (_event: unknown, newPage: number) => {
+  const handlePageChange = (event: unknown, newPage: number) => {
     setPage(newPage);
   };
 
