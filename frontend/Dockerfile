@@ -4,16 +4,16 @@ FROM node:18-alpine
 # Set working directory
 WORKDIR /app
 
-# Copy package files
+# Copy package files from frontend
 COPY package*.json ./
 
-# Install dependencies with legacy peer deps flag
+# Install frontend dependencies with legacy peer deps flag
 RUN npm install --legacy-peer-deps
 
-# Copy source code
+# Copy frontend source code
 COPY . .
 
-# Build the application
+# Build the frontend application
 RUN npm run build
 
 # Install serve to run the application
