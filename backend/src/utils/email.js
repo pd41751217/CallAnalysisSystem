@@ -15,11 +15,11 @@ const createTransporter = () => {
 };
 
 // Send password reset email
-export const sendPasswordResetEmail = async (email, token) => {
+export const sendPasswordResetEmail = async (email, name, resetUrl) => {
   try {
     const transporter = createTransporter();
     
-    const resetUrl = `${process.env.CORS_ORIGIN || 'http://localhost:5173'}/reset-password?token=${token}`;
+
     
     const mailOptions = {
       from: process.env.EMAIL_FROM || 'noreply@callanalysis.com',
@@ -29,6 +29,7 @@ export const sendPasswordResetEmail = async (email, token) => {
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
           <h2 style="color: #1976d2;">Call Analysis System</h2>
           <h3>Password Reset Request</h3>
+          <p>Hello ${name},</p>
           <p>You requested a password reset for your account.</p>
           <p>Click the button below to reset your password:</p>
           <div style="text-align: center; margin: 30px 0;">
@@ -71,7 +72,7 @@ export const sendPasswordResetEmail = async (email, token) => {
 };
 
 // Send welcome email
-export const sendWelcomeEmail = async (email, name) => {
+export const sendWelcomeEmail = async (email, name, password) => {
   try {
     const transporter = createTransporter();
     
@@ -84,6 +85,8 @@ export const sendWelcomeEmail = async (email, name) => {
           <h2 style="color: #1976d2;">Call Analysis System</h2>
           <h3>Welcome, ${name}!</h3>
           <p>Your account has been successfully created.</p>
+          <p>Your temporary password is: <strong>${password}</strong></p>
+          <p>Please change your password after your first login.</p>
           <p>You can now log in to the Call Analysis System and start monitoring calls.</p>
           <div style="text-align: center; margin: 30px 0;">
             <a href="${process.env.CORS_ORIGIN || 'http://localhost:5173'}/login" 
@@ -104,6 +107,8 @@ export const sendWelcomeEmail = async (email, name) => {
         Welcome, ${name}!
         
         Your account has been successfully created.
+        Your temporary password is: ${password}
+        Please change your password after your first login.
         You can now log in to the Call Analysis System and start monitoring calls.
         
         Login URL: ${process.env.CORS_ORIGIN || 'http://localhost:5173'}/login

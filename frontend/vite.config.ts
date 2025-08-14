@@ -7,5 +7,12 @@ export default defineConfig({
   server: {
     host: '0.0.0.0', // Bind to all interfaces (both IPv4 and IPv6)
     port: 5173,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+        secure: false,
+      },
+    },
   },
 })

@@ -1,5 +1,5 @@
 import express from 'express';
-import { query } from '../config/database.js';
+import { createCallAnalysis } from '../config/supabase.js';
 import { logger } from '../utils/logger.js';
 import { protect } from '../middleware/auth.js';
 
@@ -19,14 +19,43 @@ router.post('/sentiment', async (req, res) => {
       return res.status(400).json({ message: 'Missing required fields' });
     }
 
-    const result = await query(
-      `INSERT INTO sentiment_analysis (call_id, timestamp, sentiment, confidence, speaker, text_segment) 
-       VALUES ($1, CURRENT_TIMESTAMP, $2, $3, $4, $5) 
-       RETURNING *`,
-      [call_id, sentiment, confidence, speaker, text_segment]
-    );
+    // Store sentiment data in the call's analysis_data JSONB field
+    const { data: call, error: callError } = await supabase
+      .from('calls')
+      .select('analysis_data')
+      .eq('id', call_id)
+      .single();
 
-    res.status(201).json({ sentiment: result.rows[0] });
+    if (callError) {
+      return res.status(404).json({ message: 'Call not found' });
+    }
+
+    const currentAnalysis = call.analysis_data || {};
+    const sentimentData = {
+      timestamp: new Date().toISOString(),
+      sentiment,
+      confidence,
+      speaker,
+      text_segment
+    };
+
+    const updatedAnalysis = {
+      ...currentAnalysis,
+      sentiment_history: [...(currentAnalysis.sentiment_history || []), sentimentData]
+    };
+
+    const { data: updatedCall, error: updateError } = await supabase
+      .from('calls')
+      .update({ analysis_data: updatedAnalysis })
+      .eq('id', call_id)
+      .select()
+      .single();
+
+    if (updateError) {
+      throw updateError;
+    }
+
+    res.status(201).json({ sentiment: sentimentData });
 
   } catch (error) {
     logger.error('Add sentiment error:', error);
@@ -45,14 +74,42 @@ router.post('/transcript', async (req, res) => {
       return res.status(400).json({ message: 'Missing required fields' });
     }
 
-    const result = await query(
-      `INSERT INTO call_transcripts (call_id, timestamp, speaker, text, confidence) 
-       VALUES ($1, CURRENT_TIMESTAMP, $2, $3, $4) 
-       RETURNING *`,
-      [call_id, speaker, text, confidence]
-    );
+    // Store transcript data in the call's analysis_data JSONB field
+    const { data: call, error: callError } = await supabase
+      .from('calls')
+      .select('analysis_data')
+      .eq('id', call_id)
+      .single();
 
-    res.status(201).json({ transcript: result.rows[0] });
+    if (callError) {
+      return res.status(404).json({ message: 'Call not found' });
+    }
+
+    const currentAnalysis = call.analysis_data || {};
+    const transcriptData = {
+      timestamp: new Date().toISOString(),
+      speaker,
+      text,
+      confidence: confidence || 1.0
+    };
+
+    const updatedAnalysis = {
+      ...currentAnalysis,
+      transcript: [...(currentAnalysis.transcript || []), transcriptData]
+    };
+
+    const { data: updatedCall, error: updateError } = await supabase
+      .from('calls')
+      .update({ analysis_data: updatedAnalysis })
+      .eq('id', call_id)
+      .select()
+      .single();
+
+    if (updateError) {
+      throw updateError;
+    }
+
+    res.status(201).json({ transcript: transcriptData });
 
   } catch (error) {
     logger.error('Add transcript error:', error);
@@ -67,30 +124,32 @@ router.post('/audit', async (req, res) => {
   try {
     const { 
       call_id, 
-      productivity_percentage, 
+      productivity_score, 
       speech_percentage, 
       silence_percentage, 
       crosstalk_percentage, 
       music_percentage, 
-      overall_score, 
-      keywords, 
-      compliance_issues 
+      analysis_summary, 
+      detailed_results 
     } = req.body;
 
     if (!call_id) {
       return res.status(400).json({ message: 'Call ID is required' });
     }
 
-    const result = await query(
-      `INSERT INTO call_audit_data (call_id, productivity_percentage, speech_percentage, silence_percentage, 
-                                   crosstalk_percentage, music_percentage, overall_score, keywords, compliance_issues) 
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) 
-       RETURNING *`,
-      [call_id, productivity_percentage, speech_percentage, silence_percentage, 
-       crosstalk_percentage, music_percentage, overall_score, keywords, compliance_issues]
-    );
+    const analysisData = {
+      call_id: parseInt(call_id),
+      productivity_score: productivity_score || 0,
+      speech_percentage: speech_percentage || 0,
+      silence_percentage: silence_percentage || 0,
+      crosstalk_percentage: crosstalk_percentage || 0,
+      music_percentage: music_percentage || 0,
+      analysis_summary: analysis_summary || '',
+      detailed_results: detailed_results || {}
+    };
 
-    res.status(201).json({ audit: result.rows[0] });
+    const result = await createCallAnalysis(analysisData);
+    res.status(201).json({ audit: result });
 
   } catch (error) {
     logger.error('Add audit data error:', error);
@@ -109,14 +168,41 @@ router.post('/event', async (req, res) => {
       return res.status(400).json({ message: 'Call ID and event type are required' });
     }
 
-    const result = await query(
-      `INSERT INTO events (call_id, event_type, event_data, timestamp) 
-       VALUES ($1, $2, $3, CURRENT_TIMESTAMP) 
-       RETURNING *`,
-      [call_id, event_type, event_data]
-    );
+    // Store event data in the call's analysis_data JSONB field
+    const { data: call, error: callError } = await supabase
+      .from('calls')
+      .select('analysis_data')
+      .eq('id', call_id)
+      .single();
 
-    res.status(201).json({ event: result.rows[0] });
+    if (callError) {
+      return res.status(404).json({ message: 'Call not found' });
+    }
+
+    const currentAnalysis = call.analysis_data || {};
+    const eventData = {
+      timestamp: new Date().toISOString(),
+      event_type,
+      event_data: event_data || {}
+    };
+
+    const updatedAnalysis = {
+      ...currentAnalysis,
+      events: [...(currentAnalysis.events || []), eventData]
+    };
+
+    const { data: updatedCall, error: updateError } = await supabase
+      .from('calls')
+      .update({ analysis_data: updatedAnalysis })
+      .eq('id', call_id)
+      .select()
+      .single();
+
+    if (updateError) {
+      throw updateError;
+    }
+
+    res.status(201).json({ event: eventData });
 
   } catch (error) {
     logger.error('Add event error:', error);

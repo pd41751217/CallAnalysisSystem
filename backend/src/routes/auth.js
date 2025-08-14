@@ -2,7 +2,14 @@ import express from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { body, validationResult } from 'express-validator';
-import { query } from '../config/database.js';
+import { 
+  getUserByEmail, 
+  getUserById, 
+  updateUser, 
+  createPasswordResetToken, 
+  getPasswordResetToken, 
+  markPasswordResetTokenUsed 
+} from '../config/supabase.js';
 import { logger } from '../utils/logger.js';
 import { sendPasswordResetEmail } from '../utils/email.js';
 
@@ -35,20 +42,12 @@ router.post('/login', validateLogin, async (req, res) => {
 
     const { email, password } = req.body;
 
-    // Check if user exists
-    const userResult = await query(
-      `SELECT u.*, t.name as team_name 
-       FROM users u 
-       LEFT JOIN teams t ON u.team_id = t.id 
-       WHERE u.email = $1 AND u.status = 'active'`,
-      [email]
-    );
+    // Check if user exists using Supabase
+    const user = await getUserByEmail(email);
 
-    if (userResult.rows.length === 0) {
+    if (!user) {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
-
-    const user = userResult.rows[0];
 
     // Check password
     const isMatch = await bcrypt.compare(password, user.password_hash);
@@ -57,10 +56,7 @@ router.post('/login', validateLogin, async (req, res) => {
     }
 
     // Update last login
-    await query(
-      'UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = $1',
-      [user.id]
-    );
+    await updateUser(user.id, { last_login: new Date().toISOString() });
 
     // Create JWT token
     const payload = {
@@ -110,20 +106,13 @@ router.post('/verify', async (req, res) => {
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     
-    // Get user data
-    const userResult = await query(
-      `SELECT u.*, t.name as team_name 
-       FROM users u 
-       LEFT JOIN teams t ON u.team_id = t.id 
-       WHERE u.id = $1 AND u.status = 'active'`,
-      [decoded.user.id]
-    );
+    // Get user data using Supabase
+    const user = await getUserById(decoded.user.id);
 
-    if (userResult.rows.length === 0) {
+    if (!user) {
       return res.status(401).json({ message: 'Token is not valid' });
     }
 
-    const user = userResult.rows[0];
     delete user.password_hash;
 
     res.json({
@@ -154,18 +143,13 @@ router.post('/forgot-password', validateForgotPassword, async (req, res) => {
 
     const { email } = req.body;
 
-    // Check if user exists
-    const userResult = await query(
-      'SELECT id, name, email FROM users WHERE email = $1 AND status = $2',
-      [email, 'active']
-    );
+    // Check if user exists using Supabase
+    const user = await getUserByEmail(email);
 
-    if (userResult.rows.length === 0) {
+    if (!user) {
       // Don't reveal if user exists or not
       return res.json({ message: 'If an account with that email exists, a password reset link has been sent.' });
     }
-
-    const user = userResult.rows[0];
 
     // Generate reset token
     const resetToken = jwt.sign(
@@ -174,11 +158,12 @@ router.post('/forgot-password', validateForgotPassword, async (req, res) => {
       { expiresIn: '1h' }
     );
 
-    // Store reset token in database
-    await query(
-      'INSERT INTO password_reset_tokens (user_id, token, expires_at) VALUES ($1, $2, $3)',
-      [user.id, resetToken, new Date(Date.now() + 3600000)] // 1 hour
-    );
+    // Store reset token in database using Supabase
+    await createPasswordResetToken({
+      user_id: user.id,
+      token: resetToken,
+      expires_at: new Date(Date.now() + 3600000).toISOString() // 1 hour
+    });
 
     // Send email
     try {
@@ -215,30 +200,21 @@ router.post('/reset-password', validateResetPassword, async (req, res) => {
       return res.status(400).json({ message: 'Invalid or expired token' });
     }
 
-    // Check if token exists in database and is not expired
-    const tokenResult = await query(
-      'SELECT * FROM password_reset_tokens WHERE token = $1 AND expires_at > CURRENT_TIMESTAMP',
-      [token]
-    );
+    // Check if token exists in database and is not expired using Supabase
+    const resetToken = await getPasswordResetToken(token);
 
-    if (tokenResult.rows.length === 0) {
+    if (!resetToken) {
       return res.status(400).json({ message: 'Invalid or expired token' });
     }
 
     // Hash new password
     const hashedPassword = await bcrypt.hash(password, 12);
 
-    // Update user password
-    await query(
-      'UPDATE users SET password_hash = $1 WHERE id = $2',
-      [hashedPassword, decoded.userId]
-    );
+    // Update user password using Supabase
+    await updateUser(decoded.userId, { password_hash: hashedPassword });
 
-    // Delete used token
-    await query(
-      'DELETE FROM password_reset_tokens WHERE token = $1',
-      [token]
-    );
+    // Mark token as used using Supabase
+    await markPasswordResetTokenUsed(token);
 
     res.json({ message: 'Password reset successfully' });
 

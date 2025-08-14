@@ -28,6 +28,7 @@ import {
   Alert,
   InputAdornment,
   Avatar,
+  Snackbar,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -39,29 +40,41 @@ import {
 import axios from 'axios';
 
 interface User {
-  id: string;
+  id: number;
   name: string;
   email: string;
   role: 'admin' | 'team_lead' | 'agent';
-  team: string;
+  team_id?: number;
+  team?: {
+    id: number;
+    name: string;
+  };
   status: 'active' | 'inactive';
-  createdAt: string;
-  lastLogin?: string;
+  created_at: string;
+  last_login?: string;
+}
+
+interface Team {
+  id: number;
+  name: string;
+  description?: string;
 }
 
 interface UserFormData {
   name: string;
   email: string;
   role: 'admin' | 'team_lead' | 'agent';
-  team: string;
+  team_id?: number;
   password?: string;
 }
 
 const UserManagement: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
@@ -71,10 +84,9 @@ const UserManagement: React.FC = () => {
     name: '',
     email: '',
     role: 'agent',
-    team: '',
+    team_id: undefined,
     password: '',
   });
-  const [teams, setTeams] = useState<string[]>([]);
 
   useEffect(() => {
     fetchUsers();
@@ -88,62 +100,15 @@ const UserManagement: React.FC = () => {
   const fetchUsers = async () => {
     try {
       setLoading(true);
+      setError('');
       
-      // Use mock data for frontend testing
-      console.log('Using mock users data for frontend testing');
-      
-      const mockUsers = [
-        {
-          id: '1',
-          name: 'John Smith',
-          email: 'john.smith@callanalysis.com',
-          role: 'agent',
-          team: 'Sales Team',
-          status: 'active',
-          lastActive: new Date().toISOString()
-        },
-        {
-          id: '2',
-          name: 'Sarah Johnson',
-          email: 'sarah.johnson@callanalysis.com',
-          role: 'team_lead',
-          team: 'Support Team',
-          status: 'active',
-          lastActive: new Date().toISOString()
-        },
-        {
-          id: '3',
-          name: 'Mike Davis',
-          email: 'mike.davis@callanalysis.com',
-          role: 'agent',
-          team: 'Sales Team',
-          status: 'active',
-          lastActive: new Date().toISOString()
-        },
-        {
-          id: '4',
-          name: 'Lisa Wilson',
-          email: 'lisa.wilson@callanalysis.com',
-          role: 'agent',
-          team: 'Support Team',
-          status: 'inactive',
-          lastActive: new Date(Date.now() - 86400000).toISOString()
-        },
-        {
-          id: '5',
-          name: 'David Brown',
-          email: 'david.brown@callanalysis.com',
-          role: 'admin',
-          team: 'Quality Assurance',
-          status: 'active',
-          lastActive: new Date().toISOString()
-        }
-      ];
-      
-      setUsers(mockUsers);
-    } catch (err) {
-      setError('Failed to load users');
+      const response = await axios.get('/api/users');
+      console.log('Users API response:', response.data);
+      setUsers(Array.isArray(response.data?.users) ? response.data.users : []);
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Failed to load users');
       console.error('Users fetch error:', err);
+      setUsers([]); // Ensure users is always an array
     } finally {
       setLoading(false);
     }
@@ -151,21 +116,25 @@ const UserManagement: React.FC = () => {
 
   const fetchTeams = async () => {
     try {
-      // Use mock data for teams
-      console.log('Using mock teams data for frontend testing');
-      
-      const mockTeams = ['Sales Team', 'Support Team', 'Quality Assurance', 'Technical Support'];
-      setTeams(mockTeams);
-    } catch (err) {
+      const response = await axios.get('/api/users/teams');
+      console.log('Teams API response:', response.data);
+      setTeams(Array.isArray(response.data) ? response.data : []);
+    } catch (err: any) {
       console.error('Teams fetch error:', err);
+      setTeams([]); // Ensure teams is always an array
     }
   };
 
   const applySearch = () => {
+    if (!Array.isArray(users)) {
+      setFilteredUsers([]);
+      return;
+    }
+    
     const filtered = users.filter(user =>
       user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.team.toLowerCase().includes(searchTerm.toLowerCase())
+      user.team?.name.toLowerCase().includes(searchTerm.toLowerCase())
     );
     setFilteredUsers(filtered);
   };
@@ -177,7 +146,7 @@ const UserManagement: React.FC = () => {
         name: user.name,
         email: user.email,
         role: user.role,
-        team: user.team,
+        team_id: user.team_id,
       });
     } else {
       setEditingUser(null);
@@ -185,7 +154,7 @@ const UserManagement: React.FC = () => {
         name: '',
         email: '',
         role: 'agent',
-        team: '',
+        team_id: undefined,
         password: '',
       });
     }
@@ -199,37 +168,44 @@ const UserManagement: React.FC = () => {
       name: '',
       email: '',
       role: 'agent',
-      team: '',
+      team_id: undefined,
       password: '',
     });
   };
 
-  const handleFormChange = (field: keyof UserFormData, value: string) => {
+  const handleFormChange = (field: keyof UserFormData, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
   const handleSubmit = async () => {
     try {
+      setError('');
+      
       if (editingUser) {
         await axios.put(`/api/users/${editingUser.id}`, formData);
+        setSuccess('User updated successfully');
       } else {
         await axios.post('/api/users', formData);
+        setSuccess('User created successfully');
       }
+      
       handleCloseDialog();
       fetchUsers();
-    } catch (err) {
-      setError('Failed to save user');
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Failed to save user');
       console.error('User save error:', err);
     }
   };
 
-  const handleDelete = async (userId: string) => {
+  const handleDelete = async (userId: number) => {
     if (window.confirm('Are you sure you want to delete this user?')) {
       try {
+        setError('');
         await axios.delete(`/api/users/${userId}`);
+        setSuccess('User deleted successfully');
         fetchUsers();
-      } catch (err) {
-        setError('Failed to delete user');
+      } catch (err: any) {
+        setError(err.response?.data?.message || 'Failed to delete user');
         console.error('User delete error:', err);
       }
     }
@@ -261,6 +237,11 @@ const UserManagement: React.FC = () => {
     }
   };
 
+  const formatDate = (dateString: string) => {
+    if (!dateString) return 'Never';
+    return new Date(dateString).toLocaleDateString();
+  };
+
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
@@ -285,6 +266,7 @@ const UserManagement: React.FC = () => {
       </Box>
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+      {success && <Alert severity="success" sx={{ mb: 2 }}>{success}</Alert>}
 
       {/* Search */}
       <Card sx={{ mb: 3 }}>
@@ -322,64 +304,71 @@ const UserManagement: React.FC = () => {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {filteredUsers
-                  .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
-                  .map((user) => (
-                    <TableRow key={user.id}>
-                      <TableCell>
-                        <Box display="flex" alignItems="center">
-                          <Avatar sx={{ mr: 2 }}>
-                            <PersonIcon />
-                          </Avatar>
-                          <Box>
-                            <Typography variant="body2" fontWeight="medium">
-                              {user.name}
-                            </Typography>
-                            <Typography variant="caption" color="textSecondary">
-                              ID: {user.id}
-                            </Typography>
+                {!Array.isArray(filteredUsers) || filteredUsers.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} align="center">
+                      <Typography variant="body2" color="textSecondary">
+                        No users found
+                      </Typography>
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  Array.isArray(filteredUsers) && filteredUsers
+                    .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
+                    .map((user) => (
+                      <TableRow key={user.id}>
+                        <TableCell>
+                          <Box display="flex" alignItems="center">
+                            <Avatar sx={{ mr: 2 }}>
+                              <PersonIcon />
+                            </Avatar>
+                            <Box>
+                              <Typography variant="body2" fontWeight="medium">
+                                {user.name}
+                              </Typography>
+                              <Typography variant="caption" color="textSecondary">
+                                ID: {user.id}
+                              </Typography>
+                            </Box>
                           </Box>
-                        </Box>
-                      </TableCell>
-                      <TableCell>{user.email}</TableCell>
-                      <TableCell>
-                        <Chip
-                          label={user.role.replace('_', ' ')}
-                          color={getRoleColor(user.role) as any}
-                          size="small"
-                        />
-                      </TableCell>
-                      <TableCell>{user.team}</TableCell>
-                      <TableCell>
-                        <Chip
-                          label={user.status}
-                          color={getStatusColor(user.status) as any}
-                          size="small"
-                        />
-                      </TableCell>
-                      <TableCell>
-                        {user.lastLogin 
-                          ? new Date(user.lastLogin).toLocaleDateString()
-                          : 'Never'
-                        }
-                      </TableCell>
-                      <TableCell>
-                        <IconButton
-                          size="small"
-                          onClick={() => handleOpenDialog(user)}
-                        >
-                          <EditIcon />
-                        </IconButton>
-                        <IconButton
-                          size="small"
-                          color="error"
-                          onClick={() => handleDelete(user.id)}
-                        >
-                          <DeleteIcon />
-                        </IconButton>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                        </TableCell>
+                        <TableCell>{user.email}</TableCell>
+                        <TableCell>
+                          <Chip
+                            label={user.role.replace('_', ' ')}
+                            color={getRoleColor(user.role) as any}
+                            size="small"
+                          />
+                        </TableCell>
+                        <TableCell>{user.team?.name || 'No Team'}</TableCell>
+                        <TableCell>
+                          <Chip
+                            label={user.status}
+                            color={getStatusColor(user.status) as any}
+                            size="small"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          {formatDate(user.last_login || '')}
+                        </TableCell>
+                        <TableCell>
+                          <IconButton
+                            size="small"
+                            onClick={() => handleOpenDialog(user)}
+                          >
+                            <EditIcon />
+                          </IconButton>
+                          <IconButton
+                            size="small"
+                            color="error"
+                            onClick={() => handleDelete(user.id)}
+                          >
+                            <DeleteIcon />
+                          </IconButton>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                )}
               </TableBody>
             </Table>
           </TableContainer>
@@ -387,7 +376,7 @@ const UserManagement: React.FC = () => {
           <TablePagination
             rowsPerPageOptions={[5, 10, 25, 50]}
             component="div"
-            count={filteredUsers.length}
+            count={Array.isArray(filteredUsers) ? filteredUsers.length : 0}
             rowsPerPage={rowsPerPage}
             page={page}
             onPageChange={handlePageChange}
@@ -432,18 +421,17 @@ const UserManagement: React.FC = () => {
                 <MenuItem value="admin">Admin</MenuItem>
               </Select>
             </FormControl>
-            <FormControl fullWidth margin="normal" required>
+            <FormControl fullWidth margin="normal">
               <InputLabel>Team</InputLabel>
               <Select
-                value={formData.team}
+                value={formData.team_id || ''}
                 label="Team"
-                onChange={(e) => handleFormChange('team', e.target.value)}
+                onChange={(e) => handleFormChange('team_id', e.target.value || undefined)}
               >
-                {Array.isArray(teams) ? teams.map((team) => (
-                  <MenuItem key={team} value={team}>{team}</MenuItem>
-                )) : (
-                  <MenuItem value="">Loading teams...</MenuItem>
-                )}
+                <MenuItem value="">No Team</MenuItem>
+                {Array.isArray(teams) && teams.map((team) => (
+                  <MenuItem key={team.id} value={team.id}>{team.name}</MenuItem>
+                ))}
               </Select>
             </FormControl>
             {!editingUser && (
@@ -466,6 +454,17 @@ const UserManagement: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Success Snackbar */}
+      <Snackbar
+        open={!!success}
+        autoHideDuration={6000}
+        onClose={() => setSuccess('')}
+      >
+        <Alert onClose={() => setSuccess('')} severity="success">
+          {success}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };

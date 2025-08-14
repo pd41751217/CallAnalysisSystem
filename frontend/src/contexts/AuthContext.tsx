@@ -52,6 +52,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(response.data.user);
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
     } catch (error) {
+      console.error('Token verification failed:', error);
       localStorage.removeItem('authToken');
       delete axios.defaults.headers.common['Authorization'];
     } finally {
@@ -61,27 +62,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = async (email: string, password: string) => {
     try {
-      // Mock authentication for frontend testing
-      // In a real app, this would be an API call
-      if (email && password) {
-        const mockUser = {
-          id: '1',
-          name: email.split('@')[0] || 'Test User',
-          email: email,
-          role: 'admin' as const,
-          team: 'General'
-        };
-        
-        const mockToken = 'mock-jwt-token-' + Date.now();
-        
-        localStorage.setItem('authToken', mockToken);
-        axios.defaults.headers.common['Authorization'] = `Bearer ${mockToken}`;
-        setUser(mockUser);
-      } else {
-        throw new Error('Please enter both email and password.');
-      }
-    } catch (error) {
-      throw new Error('Login failed. Please check your credentials.');
+      const response = await axios.post('/api/auth/login', { email, password });
+      const { token, user } = response.data;
+      
+      localStorage.setItem('authToken', token);
+      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      setUser(user);
+    } catch (error: any) {
+      throw new Error(error.response?.data?.message || 'Login failed. Please check your credentials.');
     }
   };
 

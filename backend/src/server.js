@@ -23,9 +23,6 @@ import { errorHandler } from './middleware/errorHandler.js';
 import { notFound } from './middleware/notFound.js';
 import { logger } from './utils/logger.js';
 
-// Import database connection
-import { connectDB } from './config/database.js';
-
 // Import socket handlers
 import { setupSocketHandlers } from './socket/socketHandlers.js';
 
@@ -46,10 +43,15 @@ const io = new Server(server, {
   }
 });
 
-// Connect to database
-connectDB().catch((error) => {
-  logger.error('Failed to connect to database:', error.message);
-  logger.info('Server will start without database connection');
+// Test Supabase connection
+import { testSupabaseConnection } from './config/supabase.js';
+testSupabaseConnection().then((isConnected) => {
+  if (isConnected) {
+    logger.info('Supabase connection successful');
+  } else {
+    logger.error('Failed to connect to Supabase');
+    logger.info('Server will start without database connection');
+  }
 });
 
 // Security middleware

@@ -1,130 +1,113 @@
 # Call Analysis System - Backend
 
-A comprehensive Node.js backend API for the Call Analysis System, providing real-time call monitoring, sentiment analysis, and analytics capabilities.
+A comprehensive Node.js backend API for the Call Analysis System, now fully integrated with Supabase PostgreSQL.
 
-## Features
+## 🚀 Quick Start
 
-- **Authentication & Authorization**: JWT-based authentication with role-based access control
-- **Real-time Communication**: WebSocket support for live call monitoring
-- **Call Management**: Complete CRUD operations for calls and call data
-- **Sentiment Analysis**: Real-time sentiment tracking and analysis
-- **User Management**: Team and user management with role-based permissions
-- **Analytics**: Comprehensive dashboard and reporting APIs
-- **Database**: PostgreSQL with optimized schema for call center operations
-- **Security**: Rate limiting, input validation, and security headers
+### 1. Environment Setup
 
-## Tech Stack
+Create a `.env` file in the backend directory:
 
-- **Runtime**: Node.js 18+
-- **Framework**: Express.js
-- **Database**: PostgreSQL
-- **Real-time**: Socket.io
-- **Authentication**: JWT + bcrypt
-- **Validation**: express-validator
-- **Logging**: Winston
-- **Email**: Nodemailer
-- **Security**: Helmet, CORS, Rate Limiting
+```env
+# Supabase Configuration
+SUPABASE_URL=https://your-project-id.supabase.co
+SUPABASE_ANON_KEY=your_anon_key_here
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key_here
 
-## Prerequisites
+# Server Configuration
+PORT=3001
+NODE_ENV=development
+JWT_SECRET=your_super_secret_jwt_key_here
 
-- Node.js 18+ 
-- PostgreSQL 12+
-- npm or yarn
+# Email Configuration (optional)
+EMAIL_HOST=smtp.gmail.com
+EMAIL_PORT=587
+EMAIL_USER=your_email@gmail.com
+EMAIL_PASS=your_app_password
 
-## Installation
+# CORS Configuration
+CORS_ORIGIN=http://localhost:5173
+```
 
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd CallAnalysisSystem/backend
-   ```
+### 2. Database Setup
 
-2. **Install dependencies**
-   ```bash
-   npm install
-   ```
+1. **Create Supabase Project**: Go to [supabase.com](https://supabase.com) and create a new project
+2. **Get Credentials**: Copy your project URL and API keys from the Settings > API section
+3. **Create Tables**: 
+   - Go to SQL Editor in your Supabase dashboard
+   - Copy and run the contents of `backend/supabase-schema.sql`
 
-3. **Set up environment variables**
-   ```bash
-   cp env.example .env
-   ```
-   
-   Edit `.env` with your configuration:
-   ```env
-   # Server Configuration
-   PORT=3001
-   NODE_ENV=development
+### 3. Install Dependencies
 
-   # Database Configuration
-   DB_HOST=localhost
-   DB_PORT=5432
-   DB_NAME=call_analysis_db
-   DB_USER=postgres
-   DB_PASSWORD=your_password
+```bash
+npm install
+```
 
-   # JWT Configuration
-   JWT_SECRET=your_super_secret_jwt_key_here
-   JWT_EXPIRES_IN=24h
+### 4. Seed Database
 
-   # Email Configuration
-   EMAIL_HOST=smtp.gmail.com
-   EMAIL_PORT=587
-   EMAIL_USER=your_email@gmail.com
-   EMAIL_PASS=your_app_password
+```bash
+npm run migrate:seed
+```
 
-   # CORS Configuration
-   CORS_ORIGIN=http://localhost:5173
-   ```
+This creates:
+- Default team
+- Admin user (`admin@callanalysis.com` / `admin123`)
+- Test user (`test@callanalysis.com` / `test123`)
+- Sample call data
 
-4. **Set up PostgreSQL database**
-   ```sql
-   CREATE DATABASE call_analysis_db;
-   CREATE USER call_analysis_user WITH PASSWORD 'your_password';
-   GRANT ALL PRIVILEGES ON DATABASE call_analysis_db TO call_analysis_user;
-   ```
+### 5. Start Server
 
-5. **Run database migrations**
-   ```bash
-   npm run migrate
-   ```
-
-6. **Seed the database with sample data**
-   ```bash
-   npm run seed
-   ```
-
-## Usage
-
-### Development
 ```bash
 npm run dev
 ```
 
-### Production
-```bash
-npm start
-```
+## 📋 Available Scripts
 
-### Database Operations
-```bash
-# Run migrations
-npm run migrate
+- `npm run dev` - Start development server with hot reload
+- `npm start` - Start production server
+- `npm run migrate` - Full migration (creates tables + seeds data)
+- `npm run migrate:seed` - Data seeding only (recommended)
+- `npm run seed` - Additional sample data seeding
 
-# Seed database
-npm run seed
+## 🔧 Features
 
-# Run tests
-npm test
-```
+- **Authentication & Authorization**: JWT-based with role-based access control
+- **Real-time Communication**: WebSocket support for live call monitoring
+- **Call Management**: Complete CRUD operations for calls and analysis
+- **User Management**: Team and user management with role-based permissions
+- **Analytics**: Comprehensive dashboard and reporting APIs
+- **Database**: Supabase PostgreSQL with optimized schema
+- **Security**: Rate limiting, input validation, and security headers
 
-## API Endpoints
+## 🗄️ Database Schema
+
+The system uses these tables:
+
+| Table | Purpose |
+|-------|---------|
+| `users` | User accounts and authentication |
+| `teams` | Team management |
+| `calls` | Call records and metadata |
+| `call_analysis` | Analysis results and metrics |
+| `user_sessions` | Session management |
+| `password_reset_tokens` | Password reset functionality |
+
+## 👥 Default Users
+
+After running the migration:
+
+| Email | Password | Role | Purpose |
+|-------|----------|------|---------|
+| admin@callanalysis.com | admin123 | Admin | Full system access |
+| test@callanalysis.com | test123 | User | Testing purposes |
+
+## 🔌 API Endpoints
 
 ### Authentication
 - `POST /api/auth/login` - User login
-- `POST /api/auth/verify` - Verify JWT token
+- `POST /api/auth/logout` - User logout
 - `POST /api/auth/forgot-password` - Request password reset
 - `POST /api/auth/reset-password` - Reset password
-- `POST /api/auth/logout` - User logout
 
 ### Users
 - `GET /api/users` - Get all users (Admin, Team Lead)
@@ -132,14 +115,13 @@ npm test
 - `POST /api/users` - Create new user (Admin, Team Lead)
 - `PUT /api/users/:id` - Update user
 - `DELETE /api/users/:id` - Delete user (Admin)
-- `GET /api/users/teams` - Get all teams
-- `POST /api/users/teams` - Create new team (Admin)
 
 ### Calls
 - `GET /api/calls` - Get call history with filters
 - `GET /api/calls/:id` - Get call details
 - `POST /api/calls` - Create new call
-- `PUT /api/calls/:id/end` - End a call
+- `PUT /api/calls/:id` - Update call
+- `DELETE /api/calls/:id` - Delete call (Admin)
 
 ### Analysis
 - `POST /api/analysis/sentiment` - Add sentiment analysis data
@@ -152,7 +134,7 @@ npm test
 - `GET /api/dashboard/analytics` - Get analytics data
 - `GET /api/dashboard/live` - Get live call data
 
-## WebSocket Events
+## 🔌 WebSocket Events
 
 ### Client to Server
 - `call_start` - Start a new call
@@ -170,35 +152,7 @@ npm test
 - `event_triggered` - Event notification
 - `agent_status_updated` - Agent status update
 
-## Database Schema
-
-### Core Tables
-- `users` - User accounts and roles
-- `teams` - Team definitions
-- `calls` - Call records
-- `sentiment_analysis` - Real-time sentiment data
-- `call_transcripts` - Call conversation transcripts
-- `call_audit_data` - Call quality metrics
-- `events` - Call events and triggers
-- `agent_status` - Real-time agent status
-- `password_reset_tokens` - Password reset tokens
-
-## Default Users
-
-After running the seed script, the following users are created:
-
-| Email | Password | Role |
-|-------|----------|------|
-| admin@callanalysis.com | admin123 | Admin |
-| john.smith@callanalysis.com | password123 | Team Lead |
-| sarah.johnson@callanalysis.com | password123 | Team Lead |
-| mike.davis@callanalysis.com | password123 | Agent |
-| lisa.wilson@callanalysis.com | password123 | Agent |
-| david.brown@callanalysis.com | password123 | Agent |
-| emma.taylor@callanalysis.com | password123 | Agent |
-| alex.rodriguez@callanalysis.com | password123 | Agent |
-
-## Security Features
+## 🛡️ Security Features
 
 - **JWT Authentication**: Secure token-based authentication
 - **Role-based Access Control**: Admin, Team Lead, and Agent roles
@@ -208,78 +162,56 @@ After running the seed script, the following users are created:
 - **Security Headers**: Helmet.js for security headers
 - **Password Hashing**: bcrypt for secure password storage
 
-## Error Handling
+## 🐛 Troubleshooting
 
-The API uses centralized error handling with:
-- Structured error responses
-- Comprehensive logging
-- HTTP status codes
-- Validation error details
+### "Tables do not exist" Error
+- Run the SQL schema manually in Supabase dashboard
+- Use `npm run migrate:seed` after creating tables
 
-## Logging
+### Connection Errors
+- Check your `.env` file has correct Supabase credentials
+- Verify your Supabase project is active
+- Ensure you're using the correct URL and keys
 
-Logging is handled by Winston with:
-- Console logging in development
-- File logging in production
-- Error tracking
-- Request/response logging
+### Permission Errors
+- Check Row Level Security (RLS) policies
+- Verify your service role key has proper permissions
+- Ensure tables are created with correct permissions
 
-## Testing
+## 📝 Environment Variables
 
-```bash
-# Run all tests
-npm test
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `SUPABASE_URL` | Your Supabase project URL | Yes |
+| `SUPABASE_ANON_KEY` | Supabase anonymous key | Yes |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key | Yes |
+| `JWT_SECRET` | Secret key for JWT tokens | Yes |
+| `PORT` | Server port (default: 3001) | No |
+| `NODE_ENV` | Environment (development/production) | No |
+| `CORS_ORIGIN` | Allowed CORS origin | No |
 
-# Run tests with coverage
-npm run test:coverage
-```
+## 🔄 Migration vs Seeding
 
-## Deployment
+- **`npm run migrate`**: Full migration (creates tables + seeds data)
+- **`npm run migrate:seed`**: Data seeding only (recommended after manual table creation)
+- **`npm run seed`**: Additional sample data for testing
 
-### Environment Variables
-Ensure all required environment variables are set in production.
+## 📚 Next Steps
 
-### Database
-- Use a production PostgreSQL instance
-- Set up proper backups
-- Configure connection pooling
+1. **Start Frontend**: `cd ../frontend && npm run dev`
+2. **Test Full Application**: Login and navigate through the system
+3. **Customize**: Modify users, teams, and settings as needed
+4. **Monitor**: Check Supabase dashboard for usage and performance
 
-### Process Management
-- Use PM2 or similar process manager
-- Set up proper logging
-- Configure monitoring
+## 🤝 Support
 
-### Security
-- Use HTTPS in production
-- Set secure JWT secrets
-- Configure proper CORS origins
-- Enable rate limiting
+If you encounter issues:
 
-## Contributing
+1. Check the Supabase documentation
+2. Review the error logs in your terminal
+3. Verify your environment variables
+4. Test with the provided sample credentials
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests
-5. Submit a pull request
-
-## License
+## 📄 License
 
 MIT License - see LICENSE file for details
-
-## Support
-
-For support and questions:
-- Create an issue in the repository
-- Contact the development team
-- Check the documentation
-
-## Changelog
-
-### v1.0.0
-- Initial release
-- Complete authentication system
-- Real-time call monitoring
-- Sentiment analysis integration
-- Dashboard and analytics
-- User and team management

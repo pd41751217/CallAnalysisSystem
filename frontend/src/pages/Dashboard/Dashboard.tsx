@@ -37,12 +37,13 @@ import { useNavigate } from 'react-router-dom';
 import { useSocket } from '../../contexts/SocketContext';
 import axios from 'axios';
 
-interface Agent {
+interface User {
   id: string;
   name: string;
   email: string;
-  status: 'online' | 'offline' | 'busy';
+  role: string;
   team: string;
+  status: 'online' | 'offline' | 'calling';
   lastActive: string;
 }
 
@@ -58,15 +59,16 @@ interface ActiveCall {
 }
 
 interface DashboardMetrics {
-  totalAgents: number;
-  totalTeamLeads: number;
+  totalUsers: number;
+  onlineUsers: number;
+  offlineUsers: number;
+  callingUsers: number;
   liveCalls: number;
-  activeAgents: number;
 }
 
 const Dashboard: React.FC = () => {
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
-  const [agents, setAgents] = useState<Agent[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
   const [activeCalls, setActiveCalls] = useState<ActiveCall[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -78,7 +80,7 @@ const Dashboard: React.FC = () => {
     
     // Listen for real-time updates
     if (socket) {
-      socket.on('agent_status_update', handleAgentStatusUpdate);
+      socket.on('user_status_update', handleUserStatusUpdate);
       socket.on('call_started', handleCallStarted);
       socket.on('call_ended', handleCallEnded);
       socket.on('sentiment_update', handleSentimentUpdate);
@@ -86,7 +88,7 @@ const Dashboard: React.FC = () => {
 
     return () => {
       if (socket) {
-        socket.off('agent_status_update');
+        socket.off('user_status_update');
         socket.off('call_started');
         socket.off('call_ended');
         socket.off('sentiment_update');
@@ -97,111 +99,42 @@ const Dashboard: React.FC = () => {
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
+      setError('');
       
-      // Always use mock data for now to avoid API issues
-      console.log('Using mock data for frontend testing');
+      // Fetch users with online/offline/calling status
+      const usersResponse = await axios.get('/api/dashboard/users');
+      const usersData = usersResponse.data;
       
-      const mockMetrics: DashboardMetrics = {
-        totalAgents: 8,
-        totalTeamLeads: 2,
-        liveCalls: 3,
-        activeAgents: 5
+      // Fetch active calls
+      const callsResponse = await axios.get('/api/dashboard/live');
+      const callsData = callsResponse.data;
+
+      // Update metrics
+      const dashboardMetrics: DashboardMetrics = {
+        totalUsers: usersData.totalUsers,
+        onlineUsers: usersData.onlineUsers,
+        offlineUsers: usersData.offlineUsers,
+        callingUsers: usersData.callingUsers,
+        liveCalls: callsData.totalActive
       };
 
-      const mockAgents: Agent[] = [
-        {
-          id: '1',
-          name: 'John Smith',
-          email: 'john.smith@callanalysis.com',
-          status: 'online',
-          team: 'Sales Team',
-          lastActive: new Date().toISOString()
-        },
-        {
-          id: '2',
-          name: 'Sarah Johnson',
-          email: 'sarah.johnson@callanalysis.com',
-          status: 'busy',
-          team: 'Support Team',
-          lastActive: new Date().toISOString()
-        },
-        {
-          id: '3',
-          name: 'Mike Davis',
-          email: 'mike.davis@callanalysis.com',
-          status: 'online',
-          team: 'Sales Team',
-          lastActive: new Date().toISOString()
-        },
-        {
-          id: '4',
-          name: 'Lisa Wilson',
-          email: 'lisa.wilson@callanalysis.com',
-          status: 'offline',
-          team: 'Support Team',
-          lastActive: new Date().toISOString()
-        },
-        {
-          id: '5',
-          name: 'David Brown',
-          email: 'david.brown@callanalysis.com',
-          status: 'online',
-          team: 'Quality Assurance',
-          lastActive: new Date().toISOString()
-        }
-      ];
-
-      const mockActiveCalls: ActiveCall[] = [
-        {
-          id: '1',
-          agentId: '2',
-          agentName: 'Sarah Johnson',
-          customerNumber: '+1234567890',
-          startTime: new Date(Date.now() - 300000).toISOString(), // 5 minutes ago
-          duration: '5:23',
-          sentiment: 'positive',
-          status: 'active'
-        },
-        {
-          id: '2',
-          agentId: '3',
-          agentName: 'Mike Davis',
-          customerNumber: '+1987654321',
-          startTime: new Date(Date.now() - 180000).toISOString(), // 3 minutes ago
-          duration: '3:45',
-          sentiment: 'neutral',
-          status: 'active'
-        },
-        {
-          id: '3',
-          agentId: '5',
-          agentName: 'David Brown',
-          customerNumber: '+1555123456',
-          startTime: new Date(Date.now() - 60000).toISOString(), // 1 minute ago
-          duration: '1:12',
-          sentiment: 'negative',
-          status: 'active'
-        }
-      ];
-
-      console.log('Setting mock data:', { mockAgents, mockActiveCalls });
-      setMetrics(mockMetrics);
-      setAgents(mockAgents);
-      setActiveCalls(mockActiveCalls);
+      setMetrics(dashboardMetrics);
+      setUsers(usersData.users);
+      setActiveCalls(callsData.activeCalls || []);
       
     } catch (err) {
-      setError('Failed to load dashboard data');
       console.error('Dashboard data fetch error:', err);
+      setError('Failed to load dashboard data. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleAgentStatusUpdate = (data: { agentId: string; status: string }) => {
-    setAgents(prev => prev.map(agent => 
-      agent.id === data.agentId 
-        ? { ...agent, status: data.status as 'online' | 'offline' | 'busy' }
-        : agent
+  const handleUserStatusUpdate = (data: { userId: string; status: string }) => {
+    setUsers(prev => prev.map(user => 
+      user.id === data.userId 
+        ? { ...user, status: data.status as 'online' | 'offline' | 'calling' }
+        : user
     ));
   };
 
@@ -226,9 +159,16 @@ const Dashboard: React.FC = () => {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'online': return 'success';
-      case 'busy': return 'warning';
+      case 'calling': return 'warning';
       case 'offline': return 'error';
       default: return 'default';
+    }
+  };
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'calling': return <CallIcon />;
+      default: return <CircleIcon />;
     }
   };
 
@@ -237,6 +177,15 @@ const Dashboard: React.FC = () => {
       case 'positive': return 'success';
       case 'negative': return 'error';
       case 'neutral': return 'default';
+      default: return 'default';
+    }
+  };
+
+  const getRoleColor = (role: string) => {
+    switch (role) {
+      case 'admin': return 'error';
+      case 'team_lead': return 'warning';
+      case 'agent': return 'primary';
       default: return 'default';
     }
   };
@@ -250,13 +199,17 @@ const Dashboard: React.FC = () => {
   }
 
   if (error) {
-    return <Alert severity="error">{error}</Alert>;
+    return (
+      <Box>
+        <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>
+        <Box display="flex" justifyContent="center">
+          <Typography variant="body2" color="textSecondary">
+            Please check your connection and try refreshing the page.
+          </Typography>
+        </Box>
+      </Box>
+    );
   }
-
-  // Debug logging
-  console.log('Current agents state:', agents);
-  console.log('Agents type:', typeof agents);
-  console.log('Is agents array?', Array.isArray(agents));
 
   return (
     <Box>
@@ -266,17 +219,17 @@ const Dashboard: React.FC = () => {
 
       {/* Key Metrics */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} sm={6} md={3}>
+        <Grid item xs={12} sm={6} md={2}>
           <Card>
             <CardContent>
               <Box display="flex" alignItems="center">
                 <PeopleIcon color="primary" sx={{ fontSize: 40, mr: 2 }} />
                 <Box>
                   <Typography color="textSecondary" gutterBottom>
-                    Total Agents
+                    Total Users
                   </Typography>
                   <Typography variant="h4">
-                    {metrics?.totalAgents || 0}
+                    {metrics?.totalUsers || 0}
                   </Typography>
                 </Box>
               </Box>
@@ -284,17 +237,17 @@ const Dashboard: React.FC = () => {
           </Card>
         </Grid>
 
-        <Grid item xs={12} sm={6} md={3}>
+        <Grid item xs={12} sm={6} md={2}>
           <Card>
             <CardContent>
               <Box display="flex" alignItems="center">
-                <TrendingUpIcon color="primary" sx={{ fontSize: 40, mr: 2 }} />
+                <CircleIcon color="success" sx={{ fontSize: 40, mr: 2 }} />
                 <Box>
                   <Typography color="textSecondary" gutterBottom>
-                    Team Leads
+                    Online
                   </Typography>
                   <Typography variant="h4">
-                    {metrics?.totalTeamLeads || 0}
+                    {metrics?.onlineUsers || 0}
                   </Typography>
                 </Box>
               </Box>
@@ -302,7 +255,25 @@ const Dashboard: React.FC = () => {
           </Card>
         </Grid>
 
-        <Grid item xs={12} sm={6} md={3}>
+        <Grid item xs={12} sm={6} md={2}>
+          <Card>
+            <CardContent>
+              <Box display="flex" alignItems="center">
+                <CallIcon color="warning" sx={{ fontSize: 40, mr: 2 }} />
+                <Box>
+                  <Typography color="textSecondary" gutterBottom>
+                    Calling
+                  </Typography>
+                  <Typography variant="h4">
+                    {metrics?.callingUsers || 0}
+                  </Typography>
+                </Box>
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12} sm={6} md={2}>
           <Card>
             <CardContent>
               <Box display="flex" alignItems="center">
@@ -320,17 +291,17 @@ const Dashboard: React.FC = () => {
           </Card>
         </Grid>
 
-        <Grid item xs={12} sm={6} md={3}>
+        <Grid item xs={12} sm={6} md={2}>
           <Card>
             <CardContent>
               <Box display="flex" alignItems="center">
-                <ScheduleIcon color="primary" sx={{ fontSize: 40, mr: 2 }} />
+                <ScheduleIcon color="error" sx={{ fontSize: 40, mr: 2 }} />
                 <Box>
                   <Typography color="textSecondary" gutterBottom>
-                    Active Agents
+                    Offline
                   </Typography>
                   <Typography variant="h4">
-                    {metrics?.activeAgents || 0}
+                    {metrics?.offlineUsers || 0}
                   </Typography>
                 </Box>
               </Box>
@@ -340,38 +311,51 @@ const Dashboard: React.FC = () => {
       </Grid>
 
       <Grid container spacing={3}>
-        {/* Agents List */}
+        {/* Users List */}
         <Grid item xs={12} md={6}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
-                Agents (Live & Idle)
+                Users Status
               </Typography>
-                             <List>
-                 {Array.isArray(agents) ? agents.map((agent) => (
-                   <ListItem key={agent.id} divider>
-                     <ListItemAvatar>
-                       <Avatar>
-                         <PersonIcon />
-                       </Avatar>
-                     </ListItemAvatar>
-                     <ListItemText
-                       primary={agent.name}
-                       secondary={`${agent.team} • ${agent.email}`}
-                     />
-                     <Chip
-                       label={agent.status}
-                       color={getStatusColor(agent.status) as any}
-                       size="small"
-                       icon={<CircleIcon />}
-                     />
-                   </ListItem>
-                 )) : (
-                   <ListItem>
-                     <ListItemText primary="Loading agents..." />
-                   </ListItem>
-                 )}
-               </List>
+              {users.length === 0 ? (
+                <Box textAlign="center" py={3}>
+                  <PersonIcon sx={{ fontSize: 48, color: 'text.secondary' }} />
+                  <Typography color="textSecondary">
+                    No users found
+                  </Typography>
+                </Box>
+              ) : (
+                <List>
+                  {users.map((user) => (
+                    <ListItem key={user.id} divider>
+                      <ListItemAvatar>
+                        <Avatar>
+                          <PersonIcon />
+                        </Avatar>
+                      </ListItemAvatar>
+                      <ListItemText
+                        primary={user.name}
+                        secondary={`${user.email} • ${user.team}`}
+                      />
+                      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1 }}>
+                        <Chip
+                          label={user.status}
+                          color={getStatusColor(user.status) as any}
+                          size="small"
+                          icon={getStatusIcon(user.status)}
+                        />
+                        <Chip
+                          label={user.role}
+                          color={getRoleColor(user.role) as any}
+                          size="small"
+                          variant="outlined"
+                        />
+                      </Box>
+                    </ListItem>
+                  ))}
+                </List>
+              )}
             </CardContent>
           </Card>
         </Grid>
@@ -383,49 +367,50 @@ const Dashboard: React.FC = () => {
               <Typography variant="h6" gutterBottom>
                 Active Calls
               </Typography>
-              <TableContainer component={Paper} variant="outlined">
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Agent</TableCell>
-                      <TableCell>Duration</TableCell>
-                      <TableCell>Sentiment</TableCell>
-                      <TableCell>Action</TableCell>
-                    </TableRow>
-                  </TableHead>
-                                     <TableBody>
-                     {(activeCalls || []).map((call) => (
-                       <TableRow key={call.id}>
-                         <TableCell>{call.agentName}</TableCell>
-                         <TableCell>{call.duration}</TableCell>
-                         <TableCell>
-                           <Chip
-                             label={call.sentiment}
-                             color={getSentimentColor(call.sentiment) as any}
-                             size="small"
-                           />
-                         </TableCell>
-                         <TableCell>
-                           <IconButton
-                             size="small"
-                             onClick={() => navigate(`/call-details/${call.id}`)}
-                           >
-                             <VisibilityIcon />
-                           </IconButton>
-                         </TableCell>
-                       </TableRow>
-                     ))}
-                   </TableBody>
-                </Table>
-              </TableContainer>
-                             {(activeCalls || []).length === 0 && (
-                 <Box textAlign="center" py={3}>
-                   <CallIcon sx={{ fontSize: 48, color: 'text.secondary' }} />
-                   <Typography color="textSecondary">
-                     No active calls
-                   </Typography>
-                 </Box>
-               )}
+              {activeCalls.length === 0 ? (
+                <Box textAlign="center" py={3}>
+                  <CallIcon sx={{ fontSize: 48, color: 'text.secondary' }} />
+                  <Typography color="textSecondary">
+                    No active calls
+                  </Typography>
+                </Box>
+              ) : (
+                <TableContainer component={Paper} variant="outlined">
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Agent</TableCell>
+                        <TableCell>Duration</TableCell>
+                        <TableCell>Sentiment</TableCell>
+                        <TableCell>Action</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {activeCalls.map((call) => (
+                        <TableRow key={call.id}>
+                          <TableCell>{call.agentName}</TableCell>
+                          <TableCell>{call.duration}</TableCell>
+                          <TableCell>
+                            <Chip
+                              label={call.sentiment}
+                              color={getSentimentColor(call.sentiment) as any}
+                              size="small"
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <IconButton
+                              size="small"
+                              onClick={() => navigate(`/call-details/${call.id}`)}
+                            >
+                              <VisibilityIcon />
+                            </IconButton>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              )}
             </CardContent>
           </Card>
         </Grid>

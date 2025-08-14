@@ -1,5 +1,6 @@
 import express from 'express';
-import { query } from '../config/database.js';
+import { supabase } from '../config/supabase.js';
+import { getOverviewStats, getDashboardStats } from '../config/supabase.js';
 import { logger } from '../utils/logger.js';
 import { protect } from '../middleware/auth.js';
 
@@ -14,75 +15,152 @@ router.use(protect);
 router.get('/overview', async (req, res) => {
   try {
     // Get total calls
-    const totalCallsResult = await query('SELECT COUNT(*) as total FROM calls');
-    const totalCalls = parseInt(totalCallsResult.rows[0].total);
+    const { count: totalCalls } = await supabase
+      .from('calls')
+      .select('*', { count: 'exact' });
 
     // Get active calls
-    const activeCallsResult = await query('SELECT COUNT(*) as total FROM calls WHERE status = $1', ['active']);
-    const activeCalls = parseInt(activeCallsResult.rows[0].total);
+    const { count: activeCalls } = await supabase
+      .from('calls')
+      .select('*', { count: 'exact' })
+      .eq('status', 'active');
 
     // Get total agents
-    const totalAgentsResult = await query('SELECT COUNT(*) as total FROM users WHERE role = $1 AND status = $2', ['agent', 'active']);
-    const totalAgents = parseInt(totalAgentsResult.rows[0].total);
+    const { count: totalAgents } = await supabase
+      .from('users')
+      .select('*', { count: 'exact' })
+      .eq('role', 'agent')
+      .eq('status', 'active');
 
     // Get total team leads
-    const totalTeamLeadsResult = await query('SELECT COUNT(*) as total FROM users WHERE role = $1 AND status = $2', ['team_lead', 'active']);
-    const totalTeamLeads = parseInt(totalTeamLeadsResult.rows[0].total);
+    const { count: totalTeamLeads } = await supabase
+      .from('users')
+      .select('*', { count: 'exact' })
+      .eq('role', 'team_lead')
+      .eq('status', 'active');
 
     // Get average call duration
-    const avgDurationResult = await query('SELECT AVG(duration) as avg_duration FROM calls WHERE duration IS NOT NULL');
-    const avgDuration = avgDurationResult.rows[0].avg_duration ? Math.round(avgDurationResult.rows[0].avg_duration) : 0;
+    const { data: durationData } = await supabase
+      .from('calls')
+      .select('duration')
+      .not('duration', 'is', null);
 
-    // Get call type distribution
-    const callTypeResult = await query(`
-      SELECT call_type, COUNT(*) as count 
-      FROM calls 
-      GROUP BY call_type
-    `);
-
-    // Get sentiment distribution
-    const sentimentResult = await query(`
-      SELECT sentiment, COUNT(*) as count 
-      FROM sentiment_analysis 
-      GROUP BY sentiment
-    `);
+    const avgDuration = durationData && durationData.length > 0 
+      ? Math.round(durationData.reduce((sum, call) => sum + (call.duration || 0), 0) / durationData.length)
+      : 0;
 
     // Get recent calls
-    const recentCallsResult = await query(`
-      SELECT c.*, u.name as agent_name, t.name as team_name
-      FROM calls c 
-      LEFT JOIN users u ON c.agent_id = u.id 
-      LEFT JOIN teams t ON u.team_id = t.id 
-      ORDER BY c.start_time DESC 
-      LIMIT 10
-    `);
-
-    // Get agent status
-    const agentStatusResult = await query(`
-      SELECT as.*, u.name as agent_name, t.name as team_name
-      FROM agent_status as
-      LEFT JOIN users u ON as.user_id = u.id 
-      LEFT JOIN teams t ON u.team_id = t.id 
-      WHERE u.role = 'agent' AND u.status = 'active'
-      ORDER BY as.last_activity DESC
-    `);
+    const { data: recentCalls } = await supabase
+      .from('calls')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(10);
 
     res.json({
       overview: {
-        totalCalls,
-        activeCalls,
-        totalAgents,
-        totalTeamLeads,
+        totalCalls: totalCalls || 0,
+        activeCalls: activeCalls || 0,
+        totalAgents: totalAgents || 0,
+        totalTeamLeads: totalTeamLeads || 0,
         avgDuration
       },
-      callTypes: callTypeResult.rows,
-      sentiments: sentimentResult.rows,
-      recentCalls: recentCallsResult.rows,
-      agentStatus: agentStatusResult.rows
+      recentCalls: recentCalls || []
     });
 
   } catch (error) {
     logger.error('Get dashboard overview error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// @route   GET /api/dashboard/users
+// @desc    Get users with online/offline/calling status
+// @access  Private
+router.get('/users', async (req, res) => {
+  try {
+    // Get all active users
+    const { data: users, error } = await supabase
+      .from('users')
+      .select(`
+        id,
+        name,
+        email,
+        role,
+        last_login,
+        team_id
+      `)
+      .eq('status', 'active')
+      .order('name', { ascending: true });
+
+    if (error) {
+      throw error;
+    }
+
+    // Get teams data separately
+    const { data: teams, error: teamsError } = await supabase
+      .from('teams')
+      .select('id, name');
+
+    if (teamsError) {
+      throw teamsError;
+    }
+
+    // Create team lookup map
+    const teamMap = teams.reduce((map, team) => {
+      map[team.id] = team.name;
+      return map;
+    }, {});
+
+    // Get active calls to determine who is currently calling
+    const { data: activeCalls, error: callsError } = await supabase
+      .from('calls')
+      .select('user_id')
+      .eq('status', 'active');
+
+    if (callsError) {
+      throw callsError;
+    }
+
+    // Create a set of user IDs who are currently in calls
+    const callingUserIds = new Set(activeCalls?.map(call => call.user_id) || []);
+
+    // Determine online/offline/calling status based on last_login and active calls
+    const now = new Date();
+    const onlineThreshold = 5 * 60 * 1000; // 5 minutes in milliseconds
+
+    const usersWithStatus = users.map(user => {
+      const lastLogin = user.last_login ? new Date(user.last_login) : null;
+      const isOnline = lastLogin && (now.getTime() - lastLogin.getTime()) < onlineThreshold;
+      const isCalling = callingUserIds.has(user.id);
+      
+      let status = 'offline';
+      if (isCalling) {
+        status = 'calling';
+      } else if (isOnline) {
+        status = 'online';
+      }
+      
+      return {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        team: teamMap[user.team_id] || 'No Team',
+        status: status,
+        lastActive: user.last_login
+      };
+    });
+
+    res.json({
+      users: usersWithStatus,
+      totalUsers: usersWithStatus.length,
+      onlineUsers: usersWithStatus.filter(u => u.status === 'online').length,
+      offlineUsers: usersWithStatus.filter(u => u.status === 'offline').length,
+      callingUsers: usersWithStatus.filter(u => u.status === 'calling').length
+    });
+
+  } catch (error) {
+    logger.error('Get dashboard users error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 });
@@ -94,57 +172,32 @@ router.get('/analytics', async (req, res) => {
   try {
     const { period = '7d' } = req.query;
     
-    let dateFilter = '';
-    let params = [];
+    // Get call statistics for the period
+    const stats = await getOverviewStats();
     
-    if (period === '7d') {
-      dateFilter = 'WHERE c.start_time >= CURRENT_DATE - INTERVAL \'7 days\'';
-    } else if (period === '30d') {
-      dateFilter = 'WHERE c.start_time >= CURRENT_DATE - INTERVAL \'30 days\'';
-    } else if (period === '90d') {
-      dateFilter = 'WHERE c.start_time >= CURRENT_DATE - INTERVAL \'90 days\'';
-    }
+    // Calculate analytics based on the data
+    const totalCalls = stats.length;
+    const completedCalls = stats.filter(call => call.status === 'completed').length;
+    const avgDuration = stats.length > 0 
+      ? Math.round(stats.reduce((sum, call) => sum + (call.duration || 0), 0) / stats.length)
+      : 0;
 
-    // Get calls per day
-    const callsPerDayResult = await query(`
-      SELECT DATE(c.start_time) as date, COUNT(*) as count
-      FROM calls c 
-      ${dateFilter}
-      GROUP BY DATE(c.start_time)
-      ORDER BY date DESC
-      LIMIT 30
-    `, params);
+    // Calculate productivity scores
+    const productivityScores = stats
+      .map(call => call.call_analysis?.productivity_score)
+      .filter(score => score !== null && score !== undefined);
 
-    // Get productivity trends
-    const productivityResult = await query(`
-      SELECT DATE(c.start_time) as date, AVG(cad.productivity_percentage) as avg_productivity
-      FROM calls c 
-      LEFT JOIN call_audit_data cad ON c.id = cad.call_id
-      ${dateFilter}
-      WHERE cad.productivity_percentage IS NOT NULL
-      GROUP BY DATE(c.start_time)
-      ORDER BY date DESC
-      LIMIT 30
-    `, params);
-
-    // Get sentiment trends
-    const sentimentTrendResult = await query(`
-      SELECT DATE(sa.timestamp) as date, 
-             COUNT(CASE WHEN sa.sentiment = 'positive' THEN 1 END) as positive,
-             COUNT(CASE WHEN sa.sentiment = 'negative' THEN 1 END) as negative,
-             COUNT(CASE WHEN sa.sentiment = 'neutral' THEN 1 END) as neutral
-      FROM sentiment_analysis sa
-      LEFT JOIN calls c ON sa.call_id = c.id
-      ${dateFilter}
-      GROUP BY DATE(sa.timestamp)
-      ORDER BY date DESC
-      LIMIT 30
-    `, params);
+    const avgProductivity = productivityScores.length > 0
+      ? Math.round(productivityScores.reduce((sum, score) => sum + score, 0) / productivityScores.length)
+      : 0;
 
     res.json({
-      callsPerDay: callsPerDayResult.rows,
-      productivity: productivityResult.rows,
-      sentimentTrends: sentimentTrendResult.rows
+      period,
+      totalCalls,
+      completedCalls,
+      avgDuration,
+      avgProductivity,
+      callData: stats
     });
 
   } catch (error) {
@@ -159,41 +212,15 @@ router.get('/analytics', async (req, res) => {
 router.get('/live', async (req, res) => {
   try {
     // Get active calls
-    const activeCallsResult = await query(`
-      SELECT c.*, u.name as agent_name, t.name as team_name
-      FROM calls c 
-      LEFT JOIN users u ON c.agent_id = u.id 
-      LEFT JOIN teams t ON u.team_id = t.id 
-      WHERE c.status = 'active'
-      ORDER BY c.start_time ASC
-    `);
-
-    // Get recent sentiment updates
-    const recentSentimentResult = await query(`
-      SELECT sa.*, c.call_id, u.name as agent_name
-      FROM sentiment_analysis sa
-      LEFT JOIN calls c ON sa.call_id = c.id
-      LEFT JOIN users u ON c.agent_id = u.id
-      WHERE sa.timestamp >= CURRENT_TIMESTAMP - INTERVAL '1 hour'
-      ORDER BY sa.timestamp DESC
-      LIMIT 50
-    `);
-
-    // Get recent events
-    const recentEventsResult = await query(`
-      SELECT e.*, c.call_id, u.name as agent_name
-      FROM events e
-      LEFT JOIN calls c ON e.call_id = c.id
-      LEFT JOIN users u ON c.agent_id = u.id
-      WHERE e.timestamp >= CURRENT_TIMESTAMP - INTERVAL '1 hour'
-      ORDER BY e.timestamp DESC
-      LIMIT 50
-    `);
+    const { data: activeCalls } = await supabase
+      .from('calls')
+      .select('*')
+      .eq('status', 'active')
+      .order('created_at', { ascending: false });
 
     res.json({
-      activeCalls: activeCallsResult.rows,
-      recentSentiment: recentSentimentResult.rows,
-      recentEvents: recentEventsResult.rows
+      activeCalls: activeCalls || [],
+      totalActive: activeCalls ? activeCalls.length : 0
     });
 
   } catch (error) {
