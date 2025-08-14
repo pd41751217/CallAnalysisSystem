@@ -40,6 +40,21 @@ export const getPool = () => {
   return pool;
 };
 
+// Query function for executing SQL queries
+export const query = async (text, params) => {
+  const start = Date.now();
+  try {
+    const pool = getPool();
+    const res = await pool.query(text, params);
+    const duration = Date.now() - start;
+    logger.debug('Executed query', { text, duration, rows: res.rowCount });
+    return res;
+  } catch (error) {
+    logger.error('Database query error:', error);
+    throw error;
+  }
+};
+
 export const closeDB = async () => {
   if (pool) {
     await pool.end();
