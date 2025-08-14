@@ -18,5 +18,5 @@ RUN mkdir -p uploads
 # Expose port
 EXPOSE 3000
 
-# Use absolute path to avoid any cd issues
-CMD ["/usr/local/bin/node", "/app/src/server.js"]
+# Use node directly (it's in PATH) and relative path
+CMD ["node", "src/server.js"]
