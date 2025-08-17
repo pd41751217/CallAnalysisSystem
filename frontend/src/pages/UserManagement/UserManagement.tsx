@@ -211,7 +211,7 @@ const UserManagement: React.FC = () => {
     }
   };
 
-  const handlePageChange = (event: unknown, newPage: number) => {
+  const handlePageChange = (_event: unknown, newPage: number) => {
     setPage(newPage);
   };
 

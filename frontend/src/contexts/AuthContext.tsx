@@ -1,13 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import axios from 'axios';
-
-interface User {
-  id: string;
-  name: string;
-  email: string;
-  role: 'admin' | 'team_lead' | 'agent';
-  team?: string;
-}
+import { authService } from '../services/authService';
+import type { User } from '../services/authService';
 
 interface AuthContextType {
   user: User | null;
@@ -38,23 +31,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const token = localStorage.getItem('authToken');
     if (token) {
       // Verify token with backend
-      verifyToken(token);
+      verifyToken();
     } else {
       setLoading(false);
     }
   }, []);
 
-  const verifyToken = async (token: string) => {
+  const verifyToken = async () => {
     try {
-      const response = await axios.get('/api/auth/verify', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setUser(response.data.user);
-      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      const response = await authService.verifyToken();
+      setUser(response.user);
     } catch (error) {
       console.error('Token verification failed:', error);
       localStorage.removeItem('authToken');
-      delete axios.defaults.headers.common['Authorization'];
     } finally {
       setLoading(false);
     }
@@ -62,11 +51,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = async (email: string, password: string) => {
     try {
-      const response = await axios.post('/api/auth/login', { email, password });
-      const { token, user } = response.data;
+      const response = await authService.login({ email, password });
+      const { token, user } = response;
       
       localStorage.setItem('authToken', token);
-      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       setUser(user);
     } catch (error: any) {
       throw new Error(error.response?.data?.message || 'Login failed. Please check your credentials.');
@@ -75,13 +63,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = () => {
     localStorage.removeItem('authToken');
-    delete axios.defaults.headers.common['Authorization'];
     setUser(null);
   };
 
   const forgotPassword = async (email: string) => {
     try {
-      await axios.post('/api/auth/forgot-password', { email });
+      await authService.forgotPassword(email);
     } catch (error) {
       throw new Error('Failed to send reset email. Please try again.');
     }
@@ -89,7 +76,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const resetPassword = async (token: string, password: string) => {
     try {
-      await axios.post('/api/auth/reset-password', { token, password });
+      await authService.resetPassword(token, password);
     } catch (error) {
       throw new Error('Failed to reset password. Please try again.');
     }

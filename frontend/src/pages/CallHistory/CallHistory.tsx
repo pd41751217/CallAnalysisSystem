@@ -36,7 +36,7 @@ import { useNavigate } from 'react-router-dom';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
-import axios from 'axios';
+
 
 interface Call {
   id: string;
@@ -156,7 +156,7 @@ const CallHistory: React.FC = () => {
         }
       ];
       
-      setCalls(mockCalls);
+      setCalls(mockCalls as Call[]);
     } catch (err) {
       setError('Failed to load call history');
       console.error('Call history fetch error:', err);
@@ -234,7 +234,7 @@ const CallHistory: React.FC = () => {
     });
   };
 
-  const handlePageChange = (event: unknown, newPage: number) => {
+  const handlePageChange = (_event: unknown, newPage: number) => {
     setPage(newPage);
   };
 

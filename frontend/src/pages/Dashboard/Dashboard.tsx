@@ -19,7 +19,7 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  Badge,
+
   CircularProgress,
   Alert,
   Button,
@@ -31,53 +31,25 @@ import {
 import {
   People as PeopleIcon,
   Phone as PhoneIcon,
-  TrendingUp as TrendingUpIcon,
+
   Schedule as ScheduleIcon,
   Circle as CircleIcon,
   Visibility as VisibilityIcon,
   Call as CallIcon,
   Person as PersonIcon,
-  PlayArrow as PlayIcon,
+
   Stop as StopIcon,
   VolumeUp as VolumeIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import axios from 'axios';
+import { dashboardService } from '../../services';
+import type { DashboardUser, ActiveCall, DashboardMetrics } from '../../services';
 import { useSocket } from '../../contexts/SocketContext';
-
-interface User {
-  id: string;
-  name: string;
-  email: string;
-  role: string;
-  team: string;
-  status: 'online' | 'offline' | 'calling';
-  lastActive: string;
-}
-
-interface ActiveCall {
-  id: string;
-  user_id: string;
-  agentName: string;
-  agentEmail: string;
-  customerNumber: string;
-  startTime: string;
-  duration: string;
-  status: 'active' | 'on-hold' | 'transferring';
-}
-
-interface DashboardMetrics {
-  totalUsers: number;
-  onlineUsers: number;
-  offlineUsers: number;
-  callingUsers: number;
-  liveCalls: number;
-}
 
 const Dashboard: React.FC = () => {
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
-  const [users, setUsers] = useState<User[]>([]);
+  const [users, setUsers] = useState<DashboardUser[]>([]);
   const [activeCalls, setActiveCalls] = useState<ActiveCall[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -213,28 +185,23 @@ const Dashboard: React.FC = () => {
       setLoading(true);
       setError('');
       
-      // Fetch users with online/offline/calling status
-      const usersResponse = await axios.get('/api/dashboard/users');
-      const usersData = usersResponse.data;
+      // Fetch dashboard data using the service
+      const dashboardData = await dashboardService.getDashboardData();
       
-      // Fetch active calls
-      const callsResponse = await axios.get('/api/dashboard/live');
-      const callsData = callsResponse.data;
-
       // Update metrics
       const dashboardMetrics: DashboardMetrics = {
-        totalUsers: usersData.totalUsers,
-        onlineUsers: usersData.onlineUsers,
-        offlineUsers: usersData.offlineUsers,
-        callingUsers: usersData.callingUsers,
-        liveCalls: callsData.totalActive
+        totalUsers: dashboardData.users.totalUsers,
+        onlineUsers: dashboardData.users.onlineUsers,
+        offlineUsers: dashboardData.users.offlineUsers,
+        callingUsers: dashboardData.users.callingUsers,
+        liveCalls: dashboardData.calls.totalActive
       };
 
-      console.log('Loaded users from API:', usersData.users);
-      console.log('Loaded active calls from API:', callsData.activeCalls);
+      console.log('Loaded users from API:', dashboardData.users.users);
+      console.log('Loaded active calls from API:', dashboardData.calls.activeCalls);
       setMetrics(dashboardMetrics);
-      setUsers(usersData.users);
-      setActiveCalls(callsData.activeCalls || []);
+      setUsers(dashboardData.users.users);
+      setActiveCalls(dashboardData.calls.activeCalls || []);
       
     } catch (err) {
       console.error('Dashboard data fetch error:', err);
@@ -277,7 +244,7 @@ const Dashboard: React.FC = () => {
         return updatedUsers;
       } else {
         // Add new user
-        const newUser: User = {
+        const newUser: DashboardUser = {
           id: data.user.id.toString(),
           name: data.user.name,
           email: data.user.email,

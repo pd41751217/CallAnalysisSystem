@@ -12,16 +12,7 @@ import {
   Chip,
   CircularProgress,
   Alert,
-  Paper,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Badge,
-  Divider,
-  LinearProgress,
+
 } from '@mui/material';
 import {
   SentimentSatisfied as PositiveIcon,
@@ -30,9 +21,7 @@ import {
   QuestionAnswer as QuestionIcon,
   Warning as WarningIcon,
   Event as EventIcon,
-  TrendingUp as TrendingUpIcon,
-  TrendingDown as TrendingDownIcon,
-  Circle as CircleIcon,
+
 } from '@mui/icons-material';
 import { useSocket } from '../../contexts/SocketContext';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
@@ -438,7 +427,7 @@ const LiveCallAnalysis: React.FC = () => {
                 <Grid item xs={12} sm={6} md={3}>
                   <Box textAlign="center">
                     <Typography variant="h4" color="error.main">
-                      {vulnerabilities.filter(v => v.severity === 'high' || v.severity === 'critical').length}
+                      {vulnerabilities.filter(v => v.severity === 'high').length}
                     </Typography>
                     <Typography variant="body2" color="textSecondary">
                       High Risk Alerts

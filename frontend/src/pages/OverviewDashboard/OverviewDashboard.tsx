@@ -13,8 +13,7 @@ import {
   TrendingUp as TrendingUpIcon,
   TrendingDown as TrendingDownIcon,
   VolumeUp as VolumeIcon,
-  MusicNote as MusicIcon,
-  VolumeOff as SilenceIcon,
+
   Chat as ChatIcon,
 } from '@mui/icons-material';
 import { 

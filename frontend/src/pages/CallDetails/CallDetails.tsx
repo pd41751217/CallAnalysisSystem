@@ -13,13 +13,10 @@ import {
   ListItemText,
   ListItemIcon,
   Chip,
-  Button,
   TextField,
   IconButton,
   Paper,
-  Divider,
   LinearProgress,
-  Avatar,
   Badge,
 } from '@mui/material';
 import {
@@ -34,7 +31,7 @@ import {
   Warning as WarningIcon,
   Error as ErrorIcon,
   Message as MessageIcon,
-  History as HistoryIcon,
+
 } from '@mui/icons-material';
 import { useSocket } from '../../contexts/SocketContext';
 import axios from 'axios';
@@ -97,7 +94,7 @@ const CallDetails: React.FC = () => {
   const [newMessage, setNewMessage] = useState('');
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
+  const [duration] = useState(0);
   const { socket } = useSocket();
 
   useEffect(() => {
