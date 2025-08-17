@@ -25,8 +25,11 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const { isAuthenticated } = useAuth();
 
   const connect = () => {
+    // Use the same URL logic as the API service
+    const socketUrl = import.meta.env.DEV ? window.location.origin : (import.meta.env.VITE_SOCKET_URL || 'http://localhost:3001');
+    
     console.log('SocketContext: Attempting to connect to socket server...');
-    console.log('SocketContext: Socket URL:', import.meta.env.VITE_SOCKET_URL || 'http://localhost:3001');
+    console.log('SocketContext: Socket URL:', socketUrl);
     
     if (!socket) {
       console.log('SocketContext: Creating new socket connection...');
@@ -35,7 +38,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const token = localStorage.getItem('authToken');
       console.log('SocketContext: Auth token available:', !!token);
       
-      const newSocket = io(import.meta.env.VITE_SOCKET_URL || 'http://localhost:3001', {
+      const newSocket = io(socketUrl, {
         transports: ['websocket'],
         autoConnect: true,
         auth: {

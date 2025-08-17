@@ -42,35 +42,10 @@ import {
   Pie,
   Cell,
 } from 'recharts';
-import axios from 'axios';
+import { callAuditService } from '../../services/callAuditService';
+import type { CallAuditData, TranscriptEntry } from '../../services/callAuditService';
 
-interface CallAuditData {
-  id: string;
-  agentName: string;
-  customerNumber: string;
-  startTime: string;
-  endTime: string;
-  duration: string;
-  audioUrl: string;
-  sentiment: {
-    positive: number;
-    negative: number;
-    neutral: number;
-  };
-  transcript: TranscriptEntry[];
-  summary: string;
-  keywords: string[];
-  score: number;
-}
 
-interface TranscriptEntry {
-  id: string;
-  timestamp: string;
-  speaker: 'agent' | 'customer';
-  text: string;
-  sentiment: 'positive' | 'negative' | 'neutral';
-  confidence: number;
-}
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -121,8 +96,8 @@ const CallAuditReport: React.FC = () => {
   const fetchCallAuditData = async () => {
     try {
       setLoading(true);
-      const response = await axios.get(`/api/call-audit/${callId}`);
-      setCallData(response.data);
+      const data = await callAuditService.getCallAudit(callId!);
+      setCallData(data);
     } catch (err) {
       setError('Failed to load call audit data');
       console.error('Call audit fetch error:', err);

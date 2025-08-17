@@ -34,61 +34,14 @@ import {
 
 } from '@mui/icons-material';
 import { useSocket } from '../../contexts/SocketContext';
-import axios from 'axios';
+import { callDetailsService } from '../../services/callDetailsService';
+import type { CallDetails as CallDetailsType, Message, TranscriptEntry } from '../../services/callDetailsService';
 
-interface CallDetails {
-  id: string;
-  agentId: string;
-  agentName: string;
-  customerNumber: string;
-  startTime: string;
-  endTime?: string;
-  duration: string;
-  status: 'active' | 'completed' | 'disconnected';
-  volume: {
-    agent: number;
-    customer: number;
-    overall: number;
-  };
-  compliance: {
-    score: number;
-    issues: ComplianceIssue[];
-    passed: boolean;
-  };
-  transcript: TranscriptEntry[];
-  messages: Message[];
-  sentiment: 'positive' | 'negative' | 'neutral';
-  score: number;
-}
 
-interface ComplianceIssue {
-  id: string;
-  type: 'critical' | 'warning' | 'info';
-  description: string;
-  timestamp: string;
-  resolved: boolean;
-}
-
-interface TranscriptEntry {
-  id: string;
-  timestamp: string;
-  speaker: 'agent' | 'customer';
-  text: string;
-  sentiment: 'positive' | 'negative' | 'neutral';
-  confidence: number;
-}
-
-interface Message {
-  id: string;
-  sender: 'agent' | 'supervisor';
-  text: string;
-  timestamp: string;
-  read: boolean;
-}
 
 const CallDetails: React.FC = () => {
   const { callId } = useParams<{ callId: string }>();
-  const [callDetails, setCallDetails] = useState<CallDetails | null>(null);
+  const [callDetails, setCallDetails] = useState<CallDetailsType | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [newMessage, setNewMessage] = useState('');
@@ -122,8 +75,8 @@ const CallDetails: React.FC = () => {
   const fetchCallDetails = async () => {
     try {
       setLoading(true);
-      const response = await axios.get(`/api/call-details/${callId}`);
-      setCallDetails(response.data);
+      const data = await callDetailsService.getCallDetails(callId!);
+      setCallDetails(data);
     } catch (err) {
       setError('Failed to load call details');
       console.error('Call details fetch error:', err);
@@ -132,7 +85,7 @@ const CallDetails: React.FC = () => {
     }
   };
 
-  const handleCallUpdate = (data: Partial<CallDetails>) => {
+  const handleCallUpdate = (data: Partial<CallDetailsType>) => {
     setCallDetails(prev => prev ? { ...prev, ...data } : null);
   };
 
@@ -154,14 +107,11 @@ const CallDetails: React.FC = () => {
     if (!newMessage.trim() || !callId) return;
 
     try {
-      const response = await axios.post(`/api/call-details/${callId}/messages`, {
-        text: newMessage,
-        sender: 'supervisor'
-      });
+      const message = await callDetailsService.sendMessage(callId, newMessage);
       
       setCallDetails(prev => prev ? {
         ...prev,
-        messages: [...prev.messages, response.data]
+        messages: [...prev.messages, message]
       } : null);
       
       setNewMessage('');

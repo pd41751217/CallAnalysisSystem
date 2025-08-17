@@ -37,34 +37,14 @@ import {
   Search as SearchIcon,
   Person as PersonIcon,
 } from '@mui/icons-material';
-import axios from 'axios';
-
-interface User {
-  id: number;
-  name: string;
-  email: string;
-  role: 'admin' | 'team_lead' | 'agent';
-  team_id?: number;
-  team?: {
-    id: number;
-    name: string;
-  };
-  status: 'online' | 'offline' | 'calling';
-  created_at: string;
-  last_login?: string;
-}
-
-interface Team {
-  id: number;
-  name: string;
-  description?: string;
-}
+import { userManagementService } from '../../services/userManagementService';
+import type { User, Team, CreateUserData, UpdateUserData } from '../../services/userManagementService';
 
 interface UserFormData {
   name: string;
   email: string;
   role: 'admin' | 'team_lead' | 'agent';
-  team_id?: number;
+  team?: string;
   password?: string;
 }
 
@@ -84,7 +64,7 @@ const UserManagement: React.FC = () => {
     name: '',
     email: '',
     role: 'agent',
-    team_id: undefined,
+    team: undefined,
     password: '',
   });
 
@@ -102,9 +82,9 @@ const UserManagement: React.FC = () => {
       setLoading(true);
       setError('');
       
-      const response = await axios.get('/api/users');
-      console.log('Users API response:', response.data);
-      setUsers(Array.isArray(response.data?.users) ? response.data.users : []);
+      const data = await userManagementService.getUsers();
+      console.log('Users API response:', data);
+      setUsers(Array.isArray(data) ? data : []);
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to load users');
       console.error('Users fetch error:', err);
@@ -116,9 +96,9 @@ const UserManagement: React.FC = () => {
 
   const fetchTeams = async () => {
     try {
-      const response = await axios.get('/api/users/teams');
-      console.log('Teams API response:', response.data);
-      setTeams(Array.isArray(response.data) ? response.data : []);
+      const data = await userManagementService.getTeams();
+      console.log('Teams API response:', data);
+      setTeams(Array.isArray(data) ? data : []);
     } catch (err: any) {
       console.error('Teams fetch error:', err);
       setTeams([]); // Ensure teams is always an array
@@ -134,7 +114,7 @@ const UserManagement: React.FC = () => {
     const filtered = users.filter(user =>
       user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.team?.name.toLowerCase().includes(searchTerm.toLowerCase())
+      (user.team && user.team.toLowerCase().includes(searchTerm.toLowerCase()))
     );
     setFilteredUsers(filtered);
   };
@@ -146,7 +126,7 @@ const UserManagement: React.FC = () => {
         name: user.name,
         email: user.email,
         role: user.role,
-        team_id: user.team_id,
+        team: user.team,
       });
     } else {
       setEditingUser(null);
@@ -154,7 +134,7 @@ const UserManagement: React.FC = () => {
         name: '',
         email: '',
         role: 'agent',
-        team_id: undefined,
+        team: undefined,
         password: '',
       });
     }
@@ -168,7 +148,7 @@ const UserManagement: React.FC = () => {
       name: '',
       email: '',
       role: 'agent',
-      team_id: undefined,
+      team: undefined,
       password: '',
     });
   };
@@ -182,10 +162,27 @@ const UserManagement: React.FC = () => {
       setError('');
       
       if (editingUser) {
-        await axios.put(`/api/users/${editingUser.id}`, formData);
+        const updateData: UpdateUserData = {
+          name: formData.name,
+          email: formData.email,
+          role: formData.role,
+          team: formData.team,
+        };
+        await userManagementService.updateUser(editingUser.id, updateData);
         setSuccess('User updated successfully');
       } else {
-        await axios.post('/api/users', formData);
+        if (!formData.password) {
+          setError('Password is required for new users');
+          return;
+        }
+        const createData: CreateUserData = {
+          name: formData.name,
+          email: formData.email,
+          password: formData.password,
+          role: formData.role,
+          team: formData.team,
+        };
+        await userManagementService.createUser(createData);
         setSuccess('User created successfully');
       }
       
@@ -197,11 +194,11 @@ const UserManagement: React.FC = () => {
     }
   };
 
-  const handleDelete = async (userId: number) => {
+  const handleDelete = async (userId: string) => {
     if (window.confirm('Are you sure you want to delete this user?')) {
       try {
         setError('');
-        await axios.delete(`/api/users/${userId}`);
+        await userManagementService.deleteUser(userId);
         setSuccess('User deleted successfully');
         fetchUsers();
       } catch (err: any) {
@@ -231,9 +228,8 @@ const UserManagement: React.FC = () => {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'online': return 'success';
-      case 'offline': return 'error';
-      case 'calling': return 'warning';
+      case 'active': return 'success';
+      case 'inactive': return 'error';
       default: return 'default';
     }
   };
@@ -341,7 +337,7 @@ const UserManagement: React.FC = () => {
                             size="small"
                           />
                         </TableCell>
-                        <TableCell>{user.team?.name || 'No Team'}</TableCell>
+                        <TableCell>{user.team || 'No Team'}</TableCell>
                         <TableCell>
                           <Chip
                             label={user.status}
@@ -425,13 +421,13 @@ const UserManagement: React.FC = () => {
             <FormControl fullWidth margin="normal">
               <InputLabel>Team</InputLabel>
               <Select
-                value={formData.team_id || ''}
+                value={formData.team || ''}
                 label="Team"
-                onChange={(e) => handleFormChange('team_id', e.target.value || undefined)}
+                onChange={(e) => handleFormChange('team', e.target.value || undefined)}
               >
                 <MenuItem value="">No Team</MenuItem>
                 {Array.isArray(teams) && teams.map((team) => (
-                  <MenuItem key={team.id} value={team.id}>{team.name}</MenuItem>
+                  <MenuItem key={team.id} value={team.name}>{team.name}</MenuItem>
                 ))}
               </Select>
             </FormControl>
