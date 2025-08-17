@@ -115,7 +115,7 @@ router.post('/', authorize('admin', 'team_lead'), validateUser, validatePassword
       password,
       role,
       team_id: team_id || null,
-      status: 'active'
+      status: 'online'
     };
 
     const newUser = await UserController.createUser(userData);

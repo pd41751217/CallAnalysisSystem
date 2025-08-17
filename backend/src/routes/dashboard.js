@@ -3,11 +3,22 @@ import { supabase } from '../config/supabase.js';
 import { getOverviewStats, getDashboardStats } from '../config/supabase.js';
 import { logger } from '../utils/logger.js';
 import { protect } from '../middleware/auth.js';
+import { broadcastDashboardUpdate } from '../utils/dashboardBroadcast.js';
 
 const router = express.Router();
 
-// Apply auth middleware to all routes
-router.use(protect);
+// Apply auth middleware to all routes except SSE endpoints
+router.use((req, res, next) => {
+  // Skip authentication for SSE endpoints
+  if (req.path === '/updates') {
+    return next();
+  }
+  return protect(req, res, next);
+});
+
+
+
+
 
 // @route   GET /api/dashboard/overview
 // @desc    Get dashboard overview data
@@ -23,21 +34,20 @@ router.get('/overview', async (req, res) => {
     const { count: activeCalls } = await supabase
       .from('calls')
       .select('*', { count: 'exact' })
-      .eq('status', 'active');
 
     // Get total agents
     const { count: totalAgents } = await supabase
       .from('users')
       .select('*', { count: 'exact' })
       .eq('role', 'agent')
-      .eq('status', 'active');
+      .in('status', ['online', 'calling']);
 
     // Get total team leads
     const { count: totalTeamLeads } = await supabase
       .from('users')
       .select('*', { count: 'exact' })
       .eq('role', 'team_lead')
-      .eq('status', 'active');
+      .in('status', ['online', 'calling']);
 
     // Get average call duration
     const { data: durationData } = await supabase
@@ -78,7 +88,7 @@ router.get('/overview', async (req, res) => {
 // @access  Private
 router.get('/users', async (req, res) => {
   try {
-    // Get all active users
+    // Get all users
     const { data: users, error } = await supabase
       .from('users')
       .select(`
@@ -87,9 +97,9 @@ router.get('/users', async (req, res) => {
         email,
         role,
         last_login,
-        team_id
+        team_id,
+        status
       `)
-      .eq('status', 'active')
       .order('name', { ascending: true });
 
     if (error) {
@@ -115,7 +125,7 @@ router.get('/users', async (req, res) => {
     const { data: activeCalls, error: callsError } = await supabase
       .from('calls')
       .select('user_id')
-      .eq('status', 'active');
+      .eq('status', 'active')
 
     if (callsError) {
       throw callsError;
@@ -124,24 +134,19 @@ router.get('/users', async (req, res) => {
     // Create a set of user IDs who are currently in calls
     const callingUserIds = new Set(activeCalls?.map(call => call.user_id) || []);
 
-    // Determine online/offline/calling status based on last_login and active calls
-    const now = new Date();
-    const onlineThreshold = 5 * 60 * 1000; // 5 minutes in milliseconds
-
+    // Determine online/offline/calling status based on database status and active calls
     const usersWithStatus = users.map(user => {
-      const lastLogin = user.last_login ? new Date(user.last_login) : null;
-      const isOnline = lastLogin && (now.getTime() - lastLogin.getTime()) < onlineThreshold;
       const isCalling = callingUserIds.has(user.id);
       
-      let status = 'offline';
+      let status = user.status || 'offline';
+      
+      // Override status to 'calling' if user is in an active call
       if (isCalling) {
         status = 'calling';
-      } else if (isOnline) {
-        status = 'online';
       }
       
       return {
-        id: user.id,
+        id: user.id.toString(),
         name: user.name,
         email: user.email,
         role: user.role,
@@ -215,11 +220,17 @@ router.get('/live', async (req, res) => {
     const { data: activeCalls } = await supabase
       .from('calls')
       .select('*')
-      .eq('status', 'active')
       .order('created_at', { ascending: false });
 
+    // Convert IDs to strings for consistency
+    const activeCallsWithStringIds = (activeCalls || []).map(call => ({
+      ...call,
+      id: call.id.toString(),
+      user_id: call.user_id.toString()
+    }));
+
     res.json({
-      activeCalls: activeCalls || [],
+      activeCalls: activeCallsWithStringIds,
       totalActive: activeCalls ? activeCalls.length : 0
     });
 
@@ -228,5 +239,19 @@ router.get('/live', async (req, res) => {
     res.status(500).json({ message: 'Server error' });
   }
 });
+
+// @route   GET /api/dashboard/updates
+// @desc    Get real-time dashboard updates via Socket.IO (legacy endpoint - deprecated)
+// @access  Public
+router.get('/updates', (req, res) => {
+  res.status(200).json({ 
+    message: 'Dashboard updates now use Socket.IO. Please connect via WebSocket.',
+    socketEndpoint: '/socket.io/'
+  });
+});
+
+
+
+
 
 export default router;

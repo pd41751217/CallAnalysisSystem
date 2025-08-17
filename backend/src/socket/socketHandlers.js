@@ -35,19 +35,25 @@ export const setupSocketHandlers = (io) => {
     if (socket.user.role === 'admin') {
       socket.join('admin');
       socket.join('all');
+      socket.join('dashboard'); // Join dashboard room for real-time updates
     } else if (socket.user.role === 'team_lead') {
       socket.join('team_leads');
       socket.join('all');
+      socket.join('dashboard'); // Join dashboard room for real-time updates
       if (socket.user.team) {
         socket.join(`team_${socket.user.team.toLowerCase().replace(/\s+/g, '_')}`);
       }
     } else {
       socket.join('agents');
       socket.join('all');
+      socket.join('dashboard'); // Join dashboard room for real-time updates
       if (socket.user.team) {
         socket.join(`team_${socket.user.team.toLowerCase().replace(/\s+/g, '_')}`);
       }
     }
+
+    // Join user-specific room
+    socket.join(`user_${socket.user.id}`);
 
     // Update user's last activity
     User.updateLastLogin(socket.user.id);
@@ -60,7 +66,6 @@ export const setupSocketHandlers = (io) => {
         const callData = {
           call_id: `CALL-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
           user_id: socket.user.id,
-          status: 'active',
           analysis_data: {
             customer_number,
             call_type: call_type || 'conventional'
@@ -215,6 +220,78 @@ export const setupSocketHandlers = (io) => {
       } catch (error) {
         logger.error('Status update error:', error);
         socket.emit('error', { message: 'Failed to update status' });
+      }
+    });
+
+    // Handle call monitoring (admin only)
+    socket.on('join_call_monitoring', async (data) => {
+      try {
+        const { callId } = data;
+        
+        // Check if user is admin
+        if (socket.user.role !== 'admin') {
+          socket.emit('error', { message: 'Access denied. Admin privileges required.' });
+          return;
+        }
+
+        // Join the call monitoring room
+        socket.join(`call_monitoring_${callId}`);
+        
+        logger.info(`Admin ${socket.user.email} joined call monitoring: ${callId}`);
+        console.log(`Admin ${socket.user.email} joined call monitoring room: call_monitoring_${callId}`);
+        
+        // Send confirmation
+        socket.emit('call_monitoring_joined', { callId });
+        
+      } catch (error) {
+        logger.error('Join call monitoring error:', error);
+        socket.emit('error', { message: 'Failed to join call monitoring' });
+      }
+    });
+
+    socket.on('leave_call_monitoring', async (data) => {
+      try {
+        const { callId } = data;
+        
+        // Leave the call monitoring room
+        socket.leave(`call_monitoring_${callId}`);
+        
+        logger.info(`Admin ${socket.user.email} left call monitoring: ${callId}`);
+        
+        // Send confirmation
+        socket.emit('call_monitoring_left', { callId });
+        
+      } catch (error) {
+        logger.error('Leave call monitoring error:', error);
+        socket.emit('error', { message: 'Failed to leave call monitoring' });
+      }
+    });
+
+    // Handle dashboard connection
+    socket.on('join_dashboard', () => {
+      try {
+        logger.info(`User ${socket.user.email} joined dashboard`);
+        socket.join('dashboard');
+        socket.emit('dashboard_connected', { 
+          message: 'Connected to dashboard updates',
+          userId: socket.user.id,
+          role: socket.user.role
+        });
+      } catch (error) {
+        logger.error('Join dashboard error:', error);
+        socket.emit('error', { message: 'Failed to join dashboard' });
+      }
+    });
+
+    // Handle dashboard disconnect
+    socket.on('leave_dashboard', () => {
+      try {
+        logger.info(`User ${socket.user.email} left dashboard`);
+        socket.leave('dashboard');
+        socket.emit('dashboard_disconnected', { message: 'Disconnected from dashboard updates' });
+      } catch (error) {
+        logger.error('Leave dashboard error:', error);
+        socket.emit('error', { message: 'Failed to leave dashboard' });
       }
     });
 

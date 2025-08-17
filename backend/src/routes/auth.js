@@ -12,6 +12,8 @@ import {
 } from '../config/supabase.js';
 import { logger } from '../utils/logger.js';
 import { sendPasswordResetEmail } from '../utils/email.js';
+import { broadcastDashboardUpdate } from '../utils/dashboardBroadcast.js';
+import { protect } from '../middleware/auth.js';
 
 const router = express.Router();
 
@@ -35,6 +37,8 @@ const validateResetPassword = [
 // @access  Public
 router.post('/login', validateLogin, async (req, res) => {
   try {
+    console.log('Login endpoint called with:', { email: req.body.email });
+    
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({ errors: errors.array() });
@@ -43,20 +47,34 @@ router.post('/login', validateLogin, async (req, res) => {
     const { email, password } = req.body;
 
     // Check if user exists using Supabase
+    console.log('Checking user existence for email:', email);
     const user = await getUserByEmail(email);
+    console.log('User found:', user ? 'Yes' : 'No');
 
     if (!user) {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
     // Check password
+    console.log('Checking password...');
     const isMatch = await bcrypt.compare(password, user.password_hash);
+    console.log('Password match:', isMatch);
     if (!isMatch) {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
-    // Update last login
-    await updateUser(user.id, { last_login: new Date().toISOString() });
+    // Update last login and set status to online
+    try {
+      await updateUser(user.id, { 
+        last_login: new Date().toISOString(),
+        status: 'online'
+      });
+    } catch (error) {
+      // If status column doesn't exist, just update last_login
+      await updateUser(user.id, { 
+        last_login: new Date().toISOString()
+      });
+    }
 
     // Create JWT token
     const payload = {
@@ -75,6 +93,23 @@ router.post('/login', validateLogin, async (req, res) => {
 
     // Remove password from response
     delete user.password_hash;
+
+    console.log('About to broadcast user_logged_in event for user:', user.id);
+
+    // Broadcast user login event to all connected dashboard clients
+    // Add a small delay to ensure SSE connections are established
+    setTimeout(() => {
+      broadcastDashboardUpdate('user_logged_in', {
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          team: user.team_name,
+          last_login: new Date().toISOString()
+        }
+      });
+    }, 1000); // 1 second delay
 
     res.json({
       token,
@@ -224,11 +259,75 @@ router.post('/reset-password', validateResetPassword, async (req, res) => {
   }
 });
 
+// @route   POST /api/auth/heartbeat
+// @desc    Update user's last activity timestamp
+// @access  Private
+router.post('/heartbeat', protect, async (req, res) => {
+  try {
+    if (req.user) {
+      // Update user's last activity and status (if columns exist)
+      try {
+        await updateUser(req.user.id, { 
+          last_activity: new Date().toISOString(),
+          status: 'online'
+        });
+      } catch (error) {
+        try {
+          // Try updating just status if last_activity doesn't exist
+          await updateUser(req.user.id, { 
+            status: 'online'
+          });
+        } catch (statusError) {
+          // Status columns not available
+        }
+      }
+    }
+    
+    res.json({ message: 'Heartbeat received' });
+  } catch (error) {
+    logger.error('Heartbeat error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 // @route   POST /api/auth/logout
 // @desc    Logout user (client-side token removal)
 // @access  Private
-router.post('/logout', async (req, res) => {
+router.post('/logout', protect, async (req, res) => {
   try {
+    console.log( 'logout', req.user )
+    // Broadcast user logout event to all connected dashboard clients
+    if (req.user) {
+      broadcastDashboardUpdate('user_logged_out', {
+        user: {
+          id: req.user.id,
+          name: req.user.name,
+          email: req.user.email,
+          role: req.user.role,
+          team: req.user.team_name
+        }
+      });
+      
+      // Update user's last activity and status (if columns exist)
+      try {
+        await updateUser(req.user.id, { 
+          last_activity: new Date().toISOString(),
+          status: 'offline'
+        });
+      } catch (error) {
+        try {
+          // Try updating just status if last_activity doesn't exist
+          await updateUser(req.user.id, { 
+            status: 'offline'
+          });
+                          } catch (statusError) {
+                    // Status columns not available
+                  }
+      }
+      
+      console.log(`User logged out: ${req.user.email}`);
+    }
+
     // In a more advanced setup, you might want to blacklist the token
     // For now, we'll just return success and let the client remove the token
     res.json({ message: 'Logged out successfully' });

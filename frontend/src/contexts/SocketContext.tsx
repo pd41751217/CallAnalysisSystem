@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
+import { useAuth } from './AuthContext';
 
 interface SocketContextType {
   socket: Socket | null;
@@ -21,33 +22,54 @@ export const useSocket = () => {
 export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
+  const { isAuthenticated } = useAuth();
 
   const connect = () => {
+    console.log('SocketContext: Attempting to connect to socket server...');
+    console.log('SocketContext: Socket URL:', import.meta.env.VITE_SOCKET_URL || 'http://localhost:3001');
+    
     if (!socket) {
+      console.log('SocketContext: Creating new socket connection...');
+      
+      // Get the authentication token
+      const token = localStorage.getItem('authToken');
+      console.log('SocketContext: Auth token available:', !!token);
+      
       const newSocket = io(import.meta.env.VITE_SOCKET_URL || 'http://localhost:3001', {
         transports: ['websocket'],
         autoConnect: true,
+        auth: {
+          token: token
+        }
       });
 
       newSocket.on('connect', () => {
-        console.log('Connected to socket server');
+        console.log('SocketContext: Connected to socket server');
+        console.log('SocketContext: Socket ID:', newSocket.id);
         setIsConnected(true);
       });
 
-      newSocket.on('disconnect', () => {
-        console.log('Disconnected from socket server');
+      newSocket.on('disconnect', (reason) => {
+        console.log('SocketContext: Disconnected from socket server, reason:', reason);
         setIsConnected(false);
       });
 
       newSocket.on('error', (error) => {
-        console.error('Socket error:', error);
+        console.error('SocketContext: Socket error:', error);
+      });
+
+      newSocket.on('connect_error', (error) => {
+        console.error('SocketContext: Connection error:', error);
       });
 
       setSocket(newSocket);
+    } else {
+      console.log('SocketContext: Socket already exists, not creating new connection');
     }
   };
 
   const disconnect = () => {
+    console.log('SocketContext: Disconnecting socket...');
     if (socket) {
       socket.disconnect();
       setSocket(null);
@@ -56,14 +78,19 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   useEffect(() => {
-    // Connect when component mounts
-    connect();
-
     // Cleanup on unmount
     return () => {
       disconnect();
     };
   }, []);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      connect();
+    } else {
+      disconnect();
+    }
+  }, [isAuthenticated]);
 
   const value: SocketContextType = {
     socket,

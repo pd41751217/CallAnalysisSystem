@@ -25,6 +25,7 @@ import { logger } from './utils/logger.js';
 
 // Import socket handlers
 import { setupSocketHandlers } from './socket/socketHandlers.js';
+import { setSocketIO } from './utils/dashboardBroadcast.js';
 
 // Load environment variables
 dotenv.config();
@@ -42,6 +43,9 @@ const io = new Server(server, {
     methods: ["GET", "POST"]
   }
 });
+
+// Make io available to routes
+app.set('io', io);
 
 // Test Supabase connection
 import { testSupabaseConnection } from './config/supabase.js';
@@ -68,7 +72,7 @@ app.use(helmet({
 
 // CORS configuration
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || "http://localhost:5173",
+  origin: [process.env.CORS_ORIGIN || "http://localhost:5173", "http://localhost:3000", "null"],
   credentials: true
 }));
 
@@ -88,8 +92,22 @@ const speedLimiter = slowDown({
   delayMs: () => 500 // begin adding 500ms of delay per request above 50
 });
 
-app.use('/api/', limiter);
-app.use('/api/', speedLimiter);
+// Apply rate limiting to all API routes except dashboard updates
+app.use('/api/', (req, res, next) => {
+  // Skip rate limiting for dashboard updates endpoint
+  if (req.path === '/dashboard/updates') {
+    return next();
+  }
+  return limiter(req, res, next);
+});
+
+app.use('/api/', (req, res, next) => {
+  // Skip speed limiting for dashboard updates endpoint
+  if (req.path === '/dashboard/updates') {
+    return next();
+  }
+  return speedLimiter(req, res, next);
+});
 
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
@@ -131,6 +149,11 @@ app.use('/api/dashboard', dashboardRoutes);
 
 // Setup Socket.IO handlers
 setupSocketHandlers(io);
+
+// Set Socket.IO instance for dashboard broadcasting
+setSocketIO(io);
+
+// User status is managed manually through login/logout/recording events
 
 // Error handling middleware
 app.use(notFound);

@@ -49,7 +49,7 @@ interface User {
     id: number;
     name: string;
   };
-  status: 'active' | 'inactive';
+  status: 'online' | 'offline' | 'calling';
   created_at: string;
   last_login?: string;
 }
@@ -231,8 +231,9 @@ const UserManagement: React.FC = () => {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'active': return 'success';
-      case 'inactive': return 'error';
+      case 'online': return 'success';
+      case 'offline': return 'error';
+      case 'calling': return 'warning';
       default: return 'default';
     }
   };
