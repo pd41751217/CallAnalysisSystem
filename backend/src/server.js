@@ -39,8 +39,13 @@ const server = createServer(app);
 // Create Socket.IO server
 const io = new Server(server, {
   cors: {
-    origin: process.env.CORS_ORIGIN || "http://localhost:5173",
-    methods: ["GET", "POST"]
+    origin: [
+      process.env.CORS_ORIGIN || "http://localhost:5173",
+      "https://callanalysissystem.onrender.com",
+      "https://callanalysissystem-frontend.onrender.com"
+    ],
+    methods: ["GET", "POST"],
+    credentials: true
   }
 });
 
@@ -71,9 +76,32 @@ app.use(helmet({
 }));
 
 // CORS configuration
+const allowedOrigins = [
+  process.env.CORS_ORIGIN || "http://localhost:5173", 
+  "http://localhost:3000", 
+  "https://callanalysissystem.onrender.com",
+  "https://callanalysissystem-frontend.onrender.com",
+  "null"
+];
+
+// Filter out undefined values
+const validOrigins = allowedOrigins.filter(origin => origin && origin !== "null");
+
 app.use(cors({
-  origin: [process.env.CORS_ORIGIN || "http://localhost:5173", "http://localhost:3000", "null"],
-  credentials: true
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    if (validOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      console.log('CORS blocked origin:', origin);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
 
 // Rate limiting
@@ -162,13 +190,17 @@ app.get('/health', (req, res) => {
 app.get('/api/test', (req, res) => {
   res.status(200).json({
     message: 'API is working',
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    origin: req.headers.origin,
+    cors: 'enabled'
   });
 });
 
 // Debug middleware to log all requests
 app.use((req, res, next) => {
   console.log(`${req.method} ${req.originalUrl} - ${new Date().toISOString()}`);
+  console.log('Origin:', req.headers.origin);
+  console.log('User-Agent:', req.headers['user-agent']);
   next();
 });
 
