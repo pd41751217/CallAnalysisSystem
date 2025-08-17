@@ -140,6 +140,20 @@ app.get('/health', (req, res) => {
   });
 });
 
+// Test API endpoint
+app.get('/api/test', (req, res) => {
+  res.status(200).json({
+    message: 'API is working',
+    timestamp: new Date().toISOString()
+  });
+});
+
+// Debug middleware to log all requests
+app.use((req, res, next) => {
+  console.log(`${req.method} ${req.originalUrl} - ${new Date().toISOString()}`);
+  next();
+});
+
 // API routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);

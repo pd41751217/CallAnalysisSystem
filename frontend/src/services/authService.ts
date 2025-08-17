@@ -19,15 +19,23 @@ export interface AuthResponse {
 }
 
 export const authService = {
+  // Test API connection
+  testConnection: async (): Promise<any> => {
+    console.log('Testing API connection...');
+    const response = await api.get('/test');
+    return response.data;
+  },
+
   // Login user
   login: async (credentials: LoginCredentials): Promise<AuthResponse> => {
+    console.log('Attempting login with URL:', '/auth/login');
     const response = await api.post('/auth/login', credentials);
     return response.data;
   },
 
   // Verify token
   verifyToken: async (): Promise<{ user: User }> => {
-    const response = await api.get('/auth/verify');
+    const response = await api.post('/auth/verify');
     return response.data;
   },
 

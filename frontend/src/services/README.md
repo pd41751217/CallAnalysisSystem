@@ -13,15 +13,17 @@ This directory contains centralized API configuration and service modules for th
 ## Configuration
 
 ### Base URL
-The API base URL is configured in `api.ts` and can be set via environment variable:
-- `REACT_APP_API_URL` - Set this in your `.env` file
-- Default: `http://localhost:3001/api`
+The API base URL is configured in `api.ts`:
+- **Development**: Uses relative URLs (`/api`) to work with Vite proxy
+- **Production**: Uses `VITE_API_URL` environment variable or defaults to `http://localhost:3001/api`
 
 ### Environment Setup
-Create a `.env` file in the frontend root:
+For production, create a `.env` file in the frontend root:
 ```
-REACT_APP_API_URL=http://localhost:3001/api
+VITE_API_URL=http://localhost:3001/api
 ```
+
+**Note**: In development, the API uses relative URLs that work with the Vite proxy configuration.
 
 ## Usage
 
