@@ -29,6 +29,7 @@ import { setSocketIO } from './utils/dashboardBroadcast.js';
 
 // Import audio streaming server
 import AudioStreamServer from './socket/audioStreamServer.js';
+import WebRTCServer from './webrtc/webrtcServer.js';
 
 // Load environment variables
 dotenv.config();
@@ -55,11 +56,13 @@ const io = new Server(server, {
 // Make io available to routes
 app.set('io', io);
 
-// Initialize audio streaming server
+// Initialize servers
 const audioStreamServer = new AudioStreamServer(io);
+const webrtcServer = new WebRTCServer();
 
-// Make audioStreamServer available to routes
+// Make servers available to routes
 app.set('audioStreamServer', audioStreamServer);
+app.set('webrtcServer', webrtcServer);
 
 // Test Supabase connection
 import { testSupabaseConnection } from './config/supabase.js';
@@ -225,6 +228,11 @@ setupSocketHandlers(io);
 
 // Set Socket.IO instance for dashboard broadcasting
 setSocketIO(io);
+
+// Setup WebRTC handlers
+io.on('connection', (socket) => {
+  webrtcServer.handleConnection(socket);
+});
 
 // Start audio streaming server
 audioStreamServer.start();

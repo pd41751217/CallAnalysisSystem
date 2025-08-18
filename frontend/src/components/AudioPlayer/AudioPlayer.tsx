@@ -10,8 +10,6 @@ interface AudioPlayerProps {
   timestamp?: string;
   autoPlay?: boolean;
   onPlay?: () => void;
-  onPause?: () => void;
-  onStop?: () => void;
 }
 
 const AudioPlayer: React.FC<AudioPlayerProps> = ({
@@ -22,27 +20,155 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({
   channels = 2,
   timestamp,
   autoPlay = true,
-  onPlay,
-  onPause,
-  onStop
+  onPlay
 }) => {
   const audioContextRef = useRef<AudioContext | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [volume, setVolume] = useState(0.7);
-  const [audioBuffer, setAudioBuffer] = useState<Float32Array | null>(null);
   const [isMuted, setIsMuted] = useState(false);
   const [audioLevel, setAudioLevel] = useState(0);
+  
+  // Continuous audio streaming without gaps
+  const isPlayingRef = useRef(false);
+  const audioQueueRef = useRef<Float32Array[]>([]);
+  const isStreamingRef = useRef(false);
+  const audioContextTimeRef = useRef(0);
+  const scheduledTimeRef = useRef(0);
 
   // Initialize audio context
   const initializeAudioContext = useCallback(() => {
-    if (!audioContextRef.current) {
+    if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
+      try {
       audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
       gainNodeRef.current = audioContextRef.current.createGain();
       gainNodeRef.current.connect(audioContextRef.current.destination);
-      gainNodeRef.current.gain.value = isMuted ? 0 : volume;
+        gainNodeRef.current.gain.value = isMuted ? 0 : volume;
+        console.log(`AudioPlayer: AudioContext initialized - state: ${audioContextRef.current.state}`);
+      } catch (error) {
+        console.error('AudioPlayer: Failed to initialize AudioContext:', error);
+      }
     }
   }, [volume, isMuted]);
+
+  // Add audio to continuous stream without gaps
+  const addToAudioStream = useCallback((audioData: Float32Array) => {
+    if (!audioContextRef.current) {
+      console.error('AudioPlayer: AudioContext not available');
+      return;
+    }
+
+    try {
+      console.log(`AudioPlayer [${audioType}]: Adding to continuous stream - samples: ${audioData.length}`);
+      
+      // Add audio data to queue
+      audioQueueRef.current.push(audioData);
+      
+      // Calculate audio level
+      let maxLevel = 0;
+      for (let i = 0; i < Math.min(audioData.length, 1000); i++) {
+        maxLevel = Math.max(maxLevel, Math.abs(audioData[i]));
+      }
+      setAudioLevel(maxLevel);
+      
+      // Start continuous streaming if not already streaming
+      if (!isStreamingRef.current) {
+        console.log(`AudioPlayer [${audioType}]: Starting continuous audio stream without gaps`);
+        isStreamingRef.current = true;
+        setIsPlaying(true);
+        isPlayingRef.current = true;
+        onPlay?.();
+        
+        // Initialize continuous streaming
+        audioContextTimeRef.current = audioContextRef.current.currentTime;
+        scheduledTimeRef.current = audioContextRef.current.currentTime;
+        startContinuousStream();
+      }
+      
+    } catch (error) {
+      console.error(`AudioPlayer: Error adding to stream:`, error);
+    }
+  }, [audioType, onPlay]);
+
+  // Start continuous audio streaming without gaps
+  const startContinuousStream = useCallback(() => {
+    if (!audioContextRef.current || !isStreamingRef.current) {
+      return;
+    }
+
+    try {
+      // Schedule the next chunk to play seamlessly
+      scheduleNextChunk();
+    } catch (error) {
+      console.error(`AudioPlayer: Error in continuous stream:`, error);
+      // Continue streaming even if there's an error
+      if (isStreamingRef.current) {
+        setTimeout(() => startContinuousStream(), 10);
+      }
+    }
+  }, [audioType, sampleRate, channels]);
+
+  // Schedule the next audio chunk to play seamlessly
+  const scheduleNextChunk = useCallback(() => {
+    if (!audioContextRef.current || !isStreamingRef.current || audioQueueRef.current.length === 0) {
+      // No more chunks, but keep streaming active for future chunks
+      if (isStreamingRef.current) {
+        setTimeout(() => scheduleNextChunk(), 10);
+      }
+      return;
+    }
+
+    try {
+      const audioData = audioQueueRef.current.shift()!;
+      console.log(`AudioPlayer [${audioType}]: Scheduling chunk - samples: ${audioData.length}, scheduled time: ${scheduledTimeRef.current.toFixed(3)}s`);
+      
+      // Create audio buffer
+      const audioBuffer = audioContextRef.current.createBuffer(channels, audioData.length, sampleRate);
+      
+      // Fill audio buffer with data
+      for (let channel = 0; channel < channels; channel++) {
+        const channelData = audioBuffer.getChannelData(channel);
+        if (channels === 1) {
+          // Mono: use the same data for all channels
+          channelData.set(audioData);
+        } else {
+          // Stereo: interleave the data
+          for (let i = 0; i < audioData.length / channels; i++) {
+            channelData[i] = audioData[i * channels + channel];
+          }
+        }
+      }
+      
+      // Create source node
+      const source = audioContextRef.current.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(gainNodeRef.current!);
+      
+      // Schedule the audio to start at the exact time for seamless playback
+      source.start(scheduledTimeRef.current);
+      
+      // Update the scheduled time for the next chunk
+      scheduledTimeRef.current += audioBuffer.duration;
+      
+      // Schedule the next chunk immediately
+      setTimeout(() => {
+        if (isStreamingRef.current) {
+          scheduleNextChunk();
+        }
+      }, 0);
+
+      console.log(`AudioPlayer [${audioType}]: Scheduled chunk - duration: ${audioBuffer.duration.toFixed(3)}s, next scheduled time: ${scheduledTimeRef.current.toFixed(3)}s`);
+      
+    } catch (error) {
+      console.error(`AudioPlayer: Error scheduling chunk:`, error);
+      // Continue scheduling even if there's an error
+      if (isStreamingRef.current) {
+        setTimeout(() => scheduleNextChunk(), 10);
+      }
+    }
+  }, [audioType, sampleRate, channels]);
+
+
 
   // Convert base64 to ArrayBuffer
   const base64ToArrayBuffer = useCallback((base64: string): ArrayBuffer => {
@@ -68,7 +194,6 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({
       return float32Array;
     } else if (bitsPerSample === 32) {
       // For 32-bit, check if it's already float or integer
-      const uint32Array = new Uint32Array(arrayBuffer);
       const float32Array = new Float32Array(arrayBuffer);
       
       // Check if the data looks like float32 (values between -1 and 1)
@@ -117,117 +242,77 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({
     }
   }, [bitsPerSample, channels]);
 
-  // Play audio data immediately
+  // Play audio data immediately without buffering
   const playAudioData = useCallback(async (audioData: string) => {
     try {
-      console.log(`AudioPlayer: Playing ${audioType} audio, size: ${audioData.length}`);
+      console.log(`AudioPlayer: Processing ${audioType} audio, size: ${audioData.length}`);
       
       // Initialize audio context if needed
       initializeAudioContext();
       
-      if (!audioContextRef.current) {
-        console.error('AudioPlayer: No audio context available');
-        return;
-      }
-
-      // Resume audio context if suspended
-      if (audioContextRef.current.state === 'suspended') {
+      // Ensure AudioContext is running
+      if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+        console.log('AudioPlayer: Resuming suspended AudioContext');
         await audioContextRef.current.resume();
       }
       
-      // Check for sample rate mismatch
-      if (audioContextRef.current.sampleRate !== sampleRate) {
-        console.warn(`AudioPlayer: Sample rate mismatch - context: ${audioContextRef.current.sampleRate}Hz, audio: ${sampleRate}Hz`);
-        // This might cause audio distortion, but we'll continue anyway
+      if (!audioContextRef.current) {
+        console.error('AudioPlayer: AudioContext not available');
+        return;
       }
 
-      // Convert base64 to audio buffer
+      // Convert base64 to ArrayBuffer
       const arrayBuffer = base64ToArrayBuffer(audioData);
       
-      // Validate array buffer
       if (arrayBuffer.byteLength === 0) {
-        console.error('AudioPlayer: Empty array buffer');
+        console.warn('AudioPlayer: Empty audio buffer received');
         return;
       }
-      
+
+      // Convert to Float32Array
       const float32Array = convertToFloat32Array(arrayBuffer);
       
-      // Validate float32 array
       if (float32Array.length === 0) {
-        console.error('AudioPlayer: Empty float32 array');
-        return;
+        console.warn('AudioPlayer: Empty Float32Array after conversion');
+          return;
       }
-      
-      console.log(`AudioPlayer: Creating audio buffer - channels: ${channels}, sampleRate: ${sampleRate}, float32Array length: ${float32Array.length}`);
-      
-      // Validate audio buffer parameters
-      const samplesPerChannel = Math.floor(float32Array.length / channels);
+
+      // Validate audio parameters
+      const samplesPerChannel = float32Array.length / channels;
       if (samplesPerChannel <= 0) {
         console.error(`AudioPlayer: Invalid samples per channel: ${samplesPerChannel}`);
         return;
       }
-      
-      // Create audio buffer
-      const audioBuffer = audioContextRef.current.createBuffer(
-        channels,
-        samplesPerChannel,
-        sampleRate
-      );
-      
-      console.log(`AudioPlayer: Audio buffer created - duration: ${audioBuffer.duration}s, length: ${audioBuffer.length}`);
-      
-      // Skip very short audio buffers that might cause issues
-      if (audioBuffer.duration < 0.1) { // Less than 100ms
-        console.log(`AudioPlayer: Skipping very short audio buffer (${audioBuffer.duration}s)`);
-        return;
-      }
-      
-      // Fill audio buffer with data
-      for (let channel = 0; channel < channels; channel++) {
-        const channelData = audioBuffer.getChannelData(channel);
-        for (let i = 0; i < channelData.length; i++) {
-          const sampleIndex = i * channels + channel;
-          channelData[i] = float32Array[sampleIndex] || 0;
-        }
-        
-        // Debug: Check channel data (efficient calculation)
-        let channelMax = 0;
-        for (let i = 0; i < Math.min(channelData.length, 1000); i++) {
-          channelMax = Math.max(channelMax, Math.abs(channelData[i]));
-        }
-        console.log(`AudioPlayer: Channel ${channel} - max value: ${channelMax}, samples: ${channelData.length}`);
+
+      // Check for sample rate mismatch
+      if (audioContextRef.current.sampleRate !== sampleRate) {
+        console.warn(`AudioPlayer: Sample rate mismatch - Context: ${audioContextRef.current.sampleRate}, Audio: ${sampleRate}`);
       }
 
-      // Create source node
-      const source = audioContextRef.current.createBufferSource();
-      source.buffer = audioBuffer;
-      source.connect(gainNodeRef.current!);
+      // Add to continuous audio stream
+      addToAudioStream(float32Array);
 
-      // Calculate audio level for visualization (efficient calculation)
-      let maxLevel = 0;
-      const step = Math.max(1, Math.floor(float32Array.length / 1000)); // Sample every Nth value
-      for (let i = 0; i < float32Array.length; i += step) {
-        maxLevel = Math.max(maxLevel, Math.abs(float32Array[i]));
-      }
-      setAudioLevel(maxLevel);
-
-      // Play audio
-      source.start(0);
-      setIsPlaying(true);
-      onPlay?.();
-
-      // Set up cleanup
-      source.onended = () => {
-        setIsPlaying(false);
-        onStop?.();
-      };
-
-      console.log(`AudioPlayer: Started playing ${audioType} audio`);
-      
     } catch (error) {
-      console.error(`AudioPlayer: Error playing ${audioType} audio:`, error);
+      console.error(`AudioPlayer: Error processing ${audioType} audio:`, error);
     }
-  }, [audioType, sampleRate, bitsPerSample, channels, initializeAudioContext, base64ToArrayBuffer, convertToFloat32Array, onPlay, onStop]);
+  }, [audioType, sampleRate, bitsPerSample, channels, initializeAudioContext, base64ToArrayBuffer, convertToFloat32Array, addToAudioStream]);
+
+  // Initialize AudioContext on mount (browser security requirement)
+  useEffect(() => {
+    const initAudio = async () => {
+      try {
+        initializeAudioContext();
+        if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+          console.log(`AudioPlayer [${audioType}]: Starting AudioContext on mount`);
+          await audioContextRef.current.resume();
+        }
+      } catch (error) {
+        console.error(`AudioPlayer [${audioType}]: Failed to initialize AudioContext:`, error);
+      }
+    };
+    
+    initAudio();
+  }, [audioType, initializeAudioContext]);
 
   // Auto-play when audio data changes
   useEffect(() => {
@@ -277,10 +362,13 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({
       <div className="audio-info">
         <span className={`audio-type ${audioType}`}>{audioType.toUpperCase()}</span>
         <span className="audio-level">
-          Level: {(audioLevel * 100).toFixed(1)}%
+            Level: {(audioLevel * 100).toFixed(1)}%
         </span>
         <span className="audio-status">
-          {isPlaying ? 'Playing' : 'Stopped'}
+          {isPlaying ? 'Continuous Streaming' : 'Starting Stream'}
+        </span>
+        <span className="buffer-status">
+          Gap-Free Audio
         </span>
       </div>
       
@@ -288,7 +376,6 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({
         <button 
           onClick={handleMuteToggle}
           className={`mute-button ${isMuted ? 'muted' : ''}`}
-          disabled={!audioData || audioData.length === 0}
         >
           {isMuted ? '🔇 Unmute' : '🔊 Mute'}
         </button>
@@ -319,3 +406,4 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({
 };
 
 export default AudioPlayer;
+

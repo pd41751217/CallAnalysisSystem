@@ -48,6 +48,7 @@ import type { DashboardUser, ActiveCall, DashboardMetrics } from '../../services
 import { useSocket } from '../../contexts/SocketContext';
 import AudioPlayer from '../../components/AudioPlayer/AudioPlayer';
 
+
 const Dashboard: React.FC = () => {
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
   const [users, setUsers] = useState<DashboardUser[]>([]);
@@ -73,6 +74,7 @@ const Dashboard: React.FC = () => {
       channels: number;
     };
   }>({});
+
   const [sseConnected, setSseConnected] = useState(false);
   const processedEventsRef = useRef<Set<string>>(new Set());
   const [dashboardConnected, setDashboardConnected] = useState(false);
@@ -943,37 +945,25 @@ const Dashboard: React.FC = () => {
               {/* Microphone Audio Stream */}
               <Box mb={2}>
                 <AudioPlayer
-                  audioData={monitoringAudioData.mic?.audioData || ''}
+                  audioData={monitoringAudioData.mic?.audioData || ""}
                   audioType="mic"
+                  autoPlay={true}
                   sampleRate={monitoringAudioData.mic?.sampleRate || 44100}
                   bitsPerSample={monitoringAudioData.mic?.bitsPerSample || 16}
                   channels={monitoringAudioData.mic?.channels || 2}
-                  timestamp={monitoringAudioData.mic?.timestamp || new Date().toISOString()}
-                  autoPlay={true}
                 />
-                {!monitoringAudioData.mic && (
-                  <Typography variant="body2" color="textSecondary" sx={{ mt: 1, fontStyle: 'italic' }}>
-                    Waiting for microphone audio...
-                  </Typography>
-                )}
               </Box>
               
               {/* Speaker Audio Stream */}
               <Box mb={2}>
                 <AudioPlayer
-                  audioData={monitoringAudioData.speaker?.audioData || ''}
+                  audioData={monitoringAudioData.speaker?.audioData || ""}
                   audioType="speaker"
+                  autoPlay={true}
                   sampleRate={monitoringAudioData.speaker?.sampleRate || 44100}
                   bitsPerSample={monitoringAudioData.speaker?.bitsPerSample || 16}
                   channels={monitoringAudioData.speaker?.channels || 2}
-                  timestamp={monitoringAudioData.speaker?.timestamp || new Date().toISOString()}
-                  autoPlay={true}
                 />
-                {!monitoringAudioData.speaker && (
-                  <Typography variant="body2" color="textSecondary" sx={{ mt: 1, fontStyle: 'italic' }}>
-                    Waiting for speaker audio...
-                  </Typography>
-                )}
               </Box>
             </Box>
           </Box>
