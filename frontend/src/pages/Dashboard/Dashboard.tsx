@@ -46,6 +46,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { dashboardService } from '../../services';
 import type { DashboardUser, ActiveCall, DashboardMetrics } from '../../services';
 import { useSocket } from '../../contexts/SocketContext';
+import AudioPlayer from '../../components/AudioPlayer/AudioPlayer';
 
 const Dashboard: React.FC = () => {
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
@@ -56,7 +57,22 @@ const Dashboard: React.FC = () => {
   const [monitoringCall, setMonitoringCall] = useState<string | null>(null);
   const [monitoringDialog, setMonitoringDialog] = useState(false);
   const [audioStream, setAudioStream] = useState<EventSource | null>(null);
-  const [audioStatus, setAudioStatus] = useState<'idle' | 'playing' | 'error'>('idle');
+  const [monitoringAudioData, setMonitoringAudioData] = useState<{
+    speaker?: {
+      audioData: string;
+      timestamp: string;
+      sampleRate: number;
+      bitsPerSample: number;
+      channels: number;
+    };
+    mic?: {
+      audioData: string;
+      timestamp: string;
+      sampleRate: number;
+      bitsPerSample: number;
+      channels: number;
+    };
+  }>({});
   const [sseConnected, setSseConnected] = useState(false);
   const processedEventsRef = useRef<Set<string>>(new Set());
   const [dashboardConnected, setDashboardConnected] = useState(false);
@@ -458,17 +474,7 @@ const Dashboard: React.FC = () => {
     setMonitoringCall(callId);
     setMonitoringDialog(true);
 
-    // Initialize audio context on user interaction (required by browsers)
-    try {
-      if (!audioContext) {
-        const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-        console.log('AudioContext created on user interaction:', ctx.state);
-        setAudioContext(ctx);
-        audioContextRef.current = ctx;
-      }
-    } catch (error) {
-      console.error('Failed to create AudioContext:', error);
-    }
+
 
     try {
       // Use Socket.IO for real-time audio streaming
@@ -478,7 +484,8 @@ const Dashboard: React.FC = () => {
         
         // Listen for audio data
         socket.on(`call_audio_${callId}`, (data) => {
-          console.log('Audio data received:', data);
+          console.log('=== AUDIO DATA RECEIVED ===');
+          console.log('Full audio data object:', data);
           console.log('Audio data size:', data.audioData ? data.audioData.length : 0);
           console.log('Audio type:', data.audioType);
           console.log('Call ID:', data.callId);
@@ -488,10 +495,29 @@ const Dashboard: React.FC = () => {
             bitsPerSample: data.bitsPerSample,
             channels: data.channels
           });
+          console.log('Data type:', data.type);
+          console.log('Has audioData:', !!data.audioData);
+          console.log('AudioData length:', data.audioData ? data.audioData.length : 'N/A');
+          console.log('AudioData preview (first 50 chars):', data.audioData ? data.audioData.substring(0, 50) + '...' : 'N/A');
+          console.log('==========================');
           
           if (data.type === 'audio_data' && data.audioData) {
-            // Convert base64 audio data to audio buffer and play
-            playAudioData(data.audioData, data.audioType, data.sampleRate, data.bitsPerSample, data.channels);
+            console.log(`Storing ${data.audioType} audio data in state`);
+            // Store audio data for display in the monitoring dialog
+            setMonitoringAudioData(prev => {
+              const newState = {
+                ...prev,
+                [data.audioType]: {
+                  audioData: data.audioData,
+                  timestamp: data.timestamp,
+                  sampleRate: data.sampleRate,
+                  bitsPerSample: data.bitsPerSample,
+                  channels: data.channels
+                }
+              };
+              console.log('Updated monitoringAudioData state:', newState);
+              return newState;
+            });
           } else {
             console.warn('Invalid audio data received:', data);
           }
@@ -515,240 +541,8 @@ const Dashboard: React.FC = () => {
     }
   };
 
-  // Audio context for real-time playback
-  const [audioContext, setAudioContext] = useState<AudioContext | null>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const [audioQueue, setAudioQueue] = useState<{ data: Float32Array; timestamp: number }[]>([]);
-  const [isPlaying, setIsPlaying] = useState(false);
-
-  // Sync audio context ref
-  useEffect(() => {
-    audioContextRef.current = audioContext;
-  }, [audioContext]);
-
-  const playAudioData = async (audioData: string, audioType: string, sampleRate: number = 44100, bitsPerSample: number = 16, channels: number = 2) => {
-    try {
-      setAudioStatus('playing');
-      
-      // Convert base64 audio data to ArrayBuffer
-      const binaryString = atob(audioData);
-      const bytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-      }
-      
-      // Convert raw audio data to Float32Array for Web Audio API
-      // Handle both 16-bit PCM and 32-bit float formats
-      let floatData: Float32Array;
-      let maxAmplitude = 0;
-      let minAmplitude = 0;
-      let nonZeroSamples = 0;
-      
-      if (bitsPerSample === 32) {
-        // 32-bit float data (already in correct format)
-        const float32Data = new Float32Array(bytes.buffer);
-        floatData = new Float32Array(float32Data.length);
-        
-        for (let i = 0; i < float32Data.length; i++) {
-          floatData[i] = float32Data[i];
-          if (floatData[i] !== 0) {
-            nonZeroSamples++;
-            maxAmplitude = Math.max(maxAmplitude, Math.abs(floatData[i]));
-            minAmplitude = Math.min(minAmplitude, -Math.abs(floatData[i]));
-          }
-        }
-      } else {
-        // 16-bit PCM data (convert to float)
-        const pcmData = new Int16Array(bytes.buffer);
-        floatData = new Float32Array(pcmData.length);
-        
-        for (let i = 0; i < pcmData.length; i++) {
-          floatData[i] = pcmData[i] / 32768.0;
-          if (floatData[i] !== 0) {
-            nonZeroSamples++;
-            maxAmplitude = Math.max(maxAmplitude, Math.abs(floatData[i]));
-            minAmplitude = Math.min(minAmplitude, -Math.abs(floatData[i]));
-          }
-        }
-      }
-      
-      // Check if audio has content
-      const hasContent = nonZeroSamples > 0 && maxAmplitude > 0.001;
-      console.log(`=== AUDIO CONTENT ANALYSIS ===`);
-      console.log(`Audio content analysis:`, {
-        totalSamples: floatData.length,
-        nonZeroSamples: nonZeroSamples,
-        maxAmplitude: maxAmplitude,
-        minAmplitude: minAmplitude,
-        hasContent: hasContent
-      });
-      console.log(`First 10 float samples:`, Array.from(floatData.slice(0, 10)));
-      console.log(`=== END AUDIO CONTENT ANALYSIS ===`);
-      
-      // Amplify audio if it's too quiet
-      if (hasContent && maxAmplitude < 0.1) {
-        const amplificationFactor = 0.1 / maxAmplitude;
-        console.log(`Amplifying audio by factor: ${amplificationFactor}`);
-        for (let i = 0; i < floatData.length; i++) {
-          floatData[i] *= amplificationFactor;
-        }
-      }
-      
-      // Add debug logging
-      console.log(`Processing ${audioType} audio:`, {
-        originalSize: audioData.length,
-        binarySize: binaryString.length,
-        floatSamples: floatData.length,
-        sampleRate: sampleRate,
-        channels: channels,
-        bitsPerSample: bitsPerSample
-      });
-      
-      // Check if we have enough data
-      if (floatData.length === 0) {
-        console.warn('No audio data to process');
-        return;
-      }
-      
-      // Add to audio queue for real-time playback
-      setAudioQueue(prev => [...prev, { 
-        data: floatData, 
-        timestamp: Date.now() 
-      }]);
-      
-      // Start playback if not already playing
-      if (!isPlaying) {
-        console.log('Starting audio playback...');
-        // Small delay to ensure audio context is properly initialized
-        setTimeout(async () => {
-          await startAudioPlayback();
-        }, 100);
-      } else {
-        console.log('Audio already playing, queue length:', audioQueue.length);
-      }
-      
-      console.log(`Queued ${audioType} audio data: ${floatData.length} samples`);
-      
-    } catch (error) {
-      console.error('Error processing audio data:', error);
-      setAudioStatus('error');
-    }
-  };
-
-  const startAudioPlayback = async () => {
-    try {
-      // Check if Web Audio API is available
-      if (!window.AudioContext && !(window as any).webkitAudioContext) {
-        console.error('Web Audio API not supported in this browser');
-        setAudioStatus('error');
-        setIsPlaying(false);
-        return;
-      }
-
-      if (!audioContextRef.current) {
-        const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-        console.log('AudioContext created:', ctx.state);
-        setAudioContext(ctx);
-        audioContextRef.current = ctx;
-      }
-      
-      // Resume audio context if suspended
-      if (audioContextRef.current.state === 'suspended') {
-        console.log('AudioContext is suspended, attempting to resume...');
-        await audioContextRef.current.resume();
-        console.log('AudioContext resumed:', audioContextRef.current.state);
-      }
-      
-      console.log('AudioContext state:', audioContextRef.current.state);
-      console.log('AudioContext sample rate:', audioContextRef.current.sampleRate);
-      
-      // Audio context test removed - was causing beep sounds
-      console.log('Audio context ready for real audio playback');
-      
-      setIsPlaying(true);
-      
-      const playNextChunk = () => {
-        console.log('playNextChunk called, queue length:', audioQueue.length);
-        setAudioQueue(prev => {
-          if (prev.length === 0) {
-            console.log('Audio queue empty, stopping playback');
-            setIsPlaying(false);
-            return prev;
-          }
-          
-          const chunk = prev[0];
-          const remaining = prev.slice(1);
-          
-          // Check if audioContext is available
-          if (!audioContextRef.current) {
-            console.error('AudioContext not available');
-            setAudioStatus('error');
-            setIsPlaying(false);
-            return remaining;
-          }
-          
-          try {
-            // Create audio buffer for this chunk
-            // Use default format (most common for Windows audio)
-            const actualChannels = 2; // Stereo
-            const samplesPerChannel = chunk.data.length / actualChannels;
-            const sampleRate = 48000; // Common Windows sample rate
-            
-            const buffer = audioContextRef.current.createBuffer(actualChannels, samplesPerChannel, sampleRate);
-            
-            if (actualChannels === 2) {
-              // Split stereo data into left and right channels
-              const leftChannel = new Float32Array(samplesPerChannel);
-              const rightChannel = new Float32Array(samplesPerChannel);
-              
-              for (let i = 0; i < chunk.data.length; i += 2) {
-                leftChannel[i / 2] = chunk.data[i];
-                rightChannel[i / 2] = chunk.data[i + 1] || chunk.data[i]; // Use left channel if right is missing
-              }
-              
-              buffer.getChannelData(0).set(leftChannel);
-              buffer.getChannelData(1).set(rightChannel);
-            } else {
-              // Mono audio - use single channel
-              buffer.getChannelData(0).set(chunk.data);
-            }
-            
-            // Create and play audio source
-            const source = audioContextRef.current.createBufferSource();
-            source.buffer = buffer;
-            source.connect(audioContextRef.current.destination);
-            source.start(0);
-            
-            console.log('=== AUDIO CHUNK PLAYED ===');
-            console.log('Audio chunk played:', {
-              samples: chunk.data.length,
-              channels: actualChannels,
-              sampleRate: sampleRate,
-              duration: chunk.data.length / sampleRate * 1000
-            });
-            console.log('First 10 samples of chunk:', Array.from(chunk.data.slice(0, 10)));
-            console.log('=== END AUDIO CHUNK ===');
-            
-            // Schedule next chunk with proper timing
-            // For 44.1kHz stereo, 50ms delay should work well
-            setTimeout(playNextChunk, 50);
-          } catch (error) {
-            console.error('Error playing audio chunk:', error);
-            setAudioStatus('error');
-            setIsPlaying(false);
-          }
-          
-          return remaining;
-        });
-      };
-      
-      playNextChunk();
-    } catch (error) {
-      console.error('Error starting audio playback:', error);
-      setAudioStatus('error');
-      setIsPlaying(false);
-    }
-  };
+  // Audio status tracking (simplified)
+  const [audioStatus, setAudioStatus] = useState<'idle' | 'playing' | 'error'>('idle');
 
   const handleStopMonitoring = () => {
     if (socket && monitoringCall) {
@@ -761,14 +555,7 @@ const Dashboard: React.FC = () => {
     }
     
     // Clean up audio playback
-    setIsPlaying(false);
-    setAudioQueue([]);
     setAudioStatus('idle');
-    
-    if (audioContext) {
-      audioContext.close();
-      setAudioContext(null);
-    }
     
     if (audioStream) {
       audioStream.close();
@@ -1146,6 +933,49 @@ const Dashboard: React.FC = () => {
             <Typography variant="body2" color="textSecondary" mt={2}>
               Audio data is being received and played in real-time. Check the browser console for detailed logs.
             </Typography>
+            
+            {/* Audio Players */}
+            <Box mt={3}>
+              <Typography variant="h6" gutterBottom>
+                Live Audio Streams
+              </Typography>
+              
+              {/* Microphone Audio Stream */}
+              <Box mb={2}>
+                <AudioPlayer
+                  audioData={monitoringAudioData.mic?.audioData || ''}
+                  audioType="mic"
+                  sampleRate={monitoringAudioData.mic?.sampleRate || 44100}
+                  bitsPerSample={monitoringAudioData.mic?.bitsPerSample || 16}
+                  channels={monitoringAudioData.mic?.channels || 2}
+                  timestamp={monitoringAudioData.mic?.timestamp || new Date().toISOString()}
+                  autoPlay={true}
+                />
+                {!monitoringAudioData.mic && (
+                  <Typography variant="body2" color="textSecondary" sx={{ mt: 1, fontStyle: 'italic' }}>
+                    Waiting for microphone audio...
+                  </Typography>
+                )}
+              </Box>
+              
+              {/* Speaker Audio Stream */}
+              <Box mb={2}>
+                <AudioPlayer
+                  audioData={monitoringAudioData.speaker?.audioData || ''}
+                  audioType="speaker"
+                  sampleRate={monitoringAudioData.speaker?.sampleRate || 44100}
+                  bitsPerSample={monitoringAudioData.speaker?.bitsPerSample || 16}
+                  channels={monitoringAudioData.speaker?.channels || 2}
+                  timestamp={monitoringAudioData.speaker?.timestamp || new Date().toISOString()}
+                  autoPlay={true}
+                />
+                {!monitoringAudioData.speaker && (
+                  <Typography variant="body2" color="textSecondary" sx={{ mt: 1, fontStyle: 'italic' }}>
+                    Waiting for speaker audio...
+                  </Typography>
+                )}
+              </Box>
+            </Box>
           </Box>
         </DialogContent>
         <DialogActions>

@@ -253,9 +253,9 @@ router.post('/stream-audio', async (req, res) => {
       });
     }
 
-    // Broadcast audio data to admin monitors via Socket.IO
-    const io = req.app.get('io');
-    if (io) {
+    // Broadcast audio data to admin monitors via AudioStreamServer
+    const audioStreamServer = req.app.get('audioStreamServer');
+    if (audioStreamServer) {
       console.log(`Broadcasting audio data for call ${callId}:`, {
         audioType,
         audioDataSize: audioData ? audioData.length : 0,
@@ -265,21 +265,18 @@ router.post('/stream-audio', async (req, res) => {
         channels: req.body.channels || 2
       });
       
-      io.to(`call_monitoring_${callId}`).emit(`call_audio_${callId}`, {
-        type: 'audio_data',
-        callId,
-        userId,
+      audioStreamServer.broadcastAudioFromHTTP(callId, {
         audioData,
-        timestamp,
         audioType,
+        timestamp,
         sampleRate: req.body.sampleRate || 44100,
         bitsPerSample: req.body.bitsPerSample || 16,
         channels: req.body.channels || 2
       });
       
-      console.log(`Audio data broadcasted to call_monitoring_${callId} room`);
+      console.log(`Audio data broadcasted for call ${callId}`);
     } else {
-      console.warn('Socket.IO not available for audio broadcasting');
+      console.warn('AudioStreamServer not available for audio broadcasting');
     }
 
     // Update user's last login

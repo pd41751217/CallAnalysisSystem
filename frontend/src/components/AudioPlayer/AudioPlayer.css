@@ -1,0 +1,135 @@
+.audio-player {
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 16px;
+  margin: 8px 0;
+  background-color: #f9f9f9;
+  font-family: Arial, sans-serif;
+}
+
+.audio-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  font-size: 14px;
+}
+
+.audio-type {
+  font-weight: bold;
+  text-transform: uppercase;
+  color: #333;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background-color: #e3f2fd;
+}
+
+.audio-type.mic {
+  background-color: #fff3e0;
+  color: #e65100;
+  border: 1px solid #ffb74d;
+}
+
+.audio-type.speaker {
+  background-color: #e8f5e8;
+  color: #2e7d32;
+  border: 1px solid #81c784;
+}
+
+.audio-level {
+  color: #666;
+}
+
+.audio-status {
+  color: #2196f3;
+  font-weight: bold;
+}
+
+.audio-controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 8px;
+}
+
+.mute-button {
+  background-color: #2196f3;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: bold;
+  transition: background-color 0.2s ease;
+}
+
+.mute-button:hover {
+  background-color: #1976d2;
+}
+
+.mute-button.muted {
+  background-color: #f44336;
+}
+
+.mute-button.muted:hover {
+  background-color: #d32f2f;
+}
+
+.mute-button:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.volume-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.volume-control label {
+  font-size: 14px;
+  color: #666;
+  min-width: 60px;
+}
+
+.volume-slider {
+  width: 100px;
+  height: 4px;
+  border-radius: 2px;
+  background: #ddd;
+  outline: none;
+  -webkit-appearance: none;
+}
+
+.volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #2196f3;
+  cursor: pointer;
+}
+
+.volume-slider::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #2196f3;
+  cursor: pointer;
+  border: none;
+}
+
+.volume-control span {
+  font-size: 12px;
+  color: #666;
+  min-width: 30px;
+}
+
+.audio-timestamp {
+  font-size: 12px;
+  color: #999;
+  text-align: right;
+}

@@ -27,6 +27,9 @@ import { logger } from './utils/logger.js';
 import { setupSocketHandlers } from './socket/socketHandlers.js';
 import { setSocketIO } from './utils/dashboardBroadcast.js';
 
+// Import audio streaming server
+import AudioStreamServer from './socket/audioStreamServer.js';
+
 // Load environment variables
 dotenv.config();
 
@@ -51,6 +54,12 @@ const io = new Server(server, {
 
 // Make io available to routes
 app.set('io', io);
+
+// Initialize audio streaming server
+const audioStreamServer = new AudioStreamServer(io);
+
+// Make audioStreamServer available to routes
+app.set('audioStreamServer', audioStreamServer);
 
 // Test Supabase connection
 import { testSupabaseConnection } from './config/supabase.js';
@@ -217,6 +226,9 @@ setupSocketHandlers(io);
 // Set Socket.IO instance for dashboard broadcasting
 setSocketIO(io);
 
+// Start audio streaming server
+audioStreamServer.start();
+
 // User status is managed manually through login/logout/recording events
 
 // Error handling middleware
@@ -224,7 +236,7 @@ app.use(notFound);
 app.use(errorHandler);
 
 // Start server
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 3002;
 
 server.listen(PORT, () => {
   logger.info(`Server running on port ${PORT}`);
@@ -235,6 +247,7 @@ server.listen(PORT, () => {
 // Graceful shutdown
 process.on('SIGTERM', () => {
   logger.info('SIGTERM received. Shutting down gracefully...');
+  audioStreamServer.stop();
   server.close(() => {
     logger.info('Process terminated');
     process.exit(0);
@@ -243,6 +256,7 @@ process.on('SIGTERM', () => {
 
 process.on('SIGINT', () => {
   logger.info('SIGINT received. Shutting down gracefully...');
+  audioStreamServer.stop();
   server.close(() => {
     logger.info('Process terminated');
     process.exit(0);

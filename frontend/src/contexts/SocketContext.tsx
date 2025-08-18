@@ -26,7 +26,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const connect = () => {
     // Use the same URL logic as the API service
-    const socketUrl = import.meta.env.VITE_SOCKET_URL || 'http://localhost:3001';
+    const socketUrl = import.meta.env.VITE_SOCKET_URL || 'http://localhost:3002';
     
     console.log('SocketContext: Attempting to connect to socket server...');
     console.log('SocketContext: Socket URL:', socketUrl);

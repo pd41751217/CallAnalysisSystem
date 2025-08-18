@@ -1,172 +1,144 @@
-import { createServer } from 'http';
-import { WebSocketServer } from 'ws';
 import { logger } from '../utils/logger.js';
 
 class AudioStreamServer {
   constructor(io) {
     this.io = io;
-    this.wss = null;
-    this.clients = new Map(); // Map of client connections
-    this.audioBuffers = new Map(); // Map of callId -> audio buffers
-    this.bufferSize = 4096; // Audio buffer size
-    this.sampleRate = 44100; // Default sample rate
+    this.activeStreams = new Map(); // Map of callId -> stream info
+    this.clients = new Map(); // Map of clientId -> client info
   }
 
-  start(port = 3001) {
-    // Create HTTP server for WebSocket
-    const server = createServer();
-    this.wss = new WebSocketServer({ server });
-
-    this.wss.on('connection', (ws, req) => {
-      this.handleWebSocketConnection(ws, req);
-    });
-
-    // Start HTTP server
-    server.listen(port, () => {
-      logger.info(`HTTP/WebSocket server started on port ${port}`);
-    });
-
-    return server;
+  start() {
+    logger.info('Audio streaming server started');
+    
+    // Set up Socket.IO event handlers
+    this.setupSocketHandlers();
+    
+    return this;
   }
 
-  handleWebSocketConnection(ws, req) {
-    const clientId = this.generateClientId();
-    this.clients.set(clientId, {
-      ws,
-      type: 'websocket',
-      callId: null,
-      audioType: null,
-      buffer: Buffer.alloc(0)
+  setupSocketHandlers() {
+    if (!this.io) {
+      logger.error('Socket.IO not available for audio streaming');
+      return;
+    }
+
+    this.io.on('connection', (socket) => {
+      logger.info(`Audio client connected: ${socket.id}`);
+      
+      // Store client info
+      this.clients.set(socket.id, {
+        socket,
+        callId: null,
+        type: 'monitor' // or 'streamer'
+      });
+
+      // Handle joining call monitoring
+      socket.on('join_call_monitoring', (data) => {
+        const { callId } = data;
+        logger.info(`Client ${socket.id} joining call monitoring: ${callId}`);
+        
+        const client = this.clients.get(socket.id);
+        if (client) {
+          client.callId = callId;
+          client.type = 'monitor';
+          socket.join(`call_monitoring_${callId}`);
+          
+          // Send confirmation
+          socket.emit('call_monitoring_joined', { callId });
+        }
+      });
+
+      // Handle leaving call monitoring
+      socket.on('leave_call_monitoring', (data) => {
+        const { callId } = data;
+        logger.info(`Client ${socket.id} leaving call monitoring: ${callId}`);
+        
+        socket.leave(`call_monitoring_${callId}`);
+        
+        const client = this.clients.get(socket.id);
+        if (client) {
+          client.callId = null;
+        }
+      });
+
+      // Handle audio data from C++ client
+      socket.on('audio_data', (data) => {
+        this.handleAudioData(socket.id, data);
+      });
+
+      // Handle disconnect
+      socket.on('disconnect', () => {
+        logger.info(`Audio client disconnected: ${socket.id}`);
+        this.clients.delete(socket.id);
+      });
     });
-
-    logger.info(`WebSocket client connected: ${clientId}`);
-
-    ws.on('message', (data) => {
-      logger.debug(`Received WebSocket message from client ${clientId}: ${data.length} bytes`);
-      this.handleAudioData(clientId, data);
-    });
-
-    ws.on('close', () => {
-      this.handleDisconnect(clientId);
-    });
-
-    ws.on('error', (error) => {
-      logger.error(`WebSocket client error: ${error.message}`);
-      this.handleDisconnect(clientId);
-    });
-  }
-
-
-
-  handleConnection(ws, req) {
-    // Legacy method - now handled by handleWebSocketConnection
-    this.handleWebSocketConnection(ws, req);
   }
 
   handleAudioData(clientId, data) {
     const client = this.clients.get(clientId);
-    if (!client) return;
+    if (!client) {
+      logger.warn(`Unknown client ${clientId} sent audio data`);
+      return;
+    }
 
-    logger.debug(`Received WebSocket audio data from client ${clientId}: ${data.length} bytes`);
+    logger.debug(`Received audio data from ${clientId}: ${data.audioType}, size: ${data.audioData ? data.audioData.length : 0}`);
 
-    try {
-      // Parse audio packet header
-      if (data.length < 28) {
-        logger.warn(`Invalid audio packet size: ${data.length}`);
-        return;
-      }
-
-      const header = this.parseAudioHeader(data);
-      if (header.magic !== 0x41554449) { // "AUDI"
-        logger.warn(`Invalid audio packet magic: 0x${header.magic.toString(16)}`);
-        return;
-      }
-
-      // Extract audio data
-      const audioData = data.slice(28, 28 + header.dataSize);
-      
-      // Convert to base64 for Socket.IO transmission
-      const base64Audio = audioData.toString('base64');
-      
-      // Determine audio type
-      const audioType = header.audioType === 0 ? 'speaker' : 'mic';
-      
-      // Get current timestamp
-      const timestamp = new Date().toISOString();
-      
-      // Try to determine call ID from active calls or use a default
-      // For now, we'll broadcast to all monitoring clients since we don't have call ID mapping
-      this.broadcastAudioData({
+    // Broadcast to all clients monitoring this call
+    if (client.callId) {
+      this.broadcastAudioData(client.callId, {
         type: 'audio_data',
-        callId: 'active_call', // Use a generic call ID for now
-        audioData: base64Audio,
-        timestamp,
-        audioType,
-        sampleRate: header.sampleRate,
-        bitsPerSample: header.bitsPerSample,
-        channels: header.channels
+        callId: client.callId,
+        audioData: data.audioData,
+        audioType: data.audioType,
+        timestamp: data.timestamp || new Date().toISOString(),
+        sampleRate: data.sampleRate || 44100,
+        bitsPerSample: data.bitsPerSample || 16,
+        channels: data.channels || 2
       });
-
-      logger.debug(`Audio data received: ${audioType}, size: ${audioData.length}, callId: ${client.callId || 'unknown'}`);
-
-    } catch (error) {
-      logger.error(`Error processing audio data: ${error.message}`);
     }
   }
 
-
-
-  parseAudioHeader(data) {
-    return {
-      magic: data.readUInt32LE(0),
-      dataSize: data.readUInt32LE(4),
-      timestamp: data.readUInt32LE(8),
-      sampleRate: data.readUInt32LE(12),
-      bitsPerSample: data.readUInt32LE(16),
-      channels: data.readUInt32LE(20),
-      audioType: data.readUInt32LE(24)
-    };
+  // Method called by HTTP endpoint to broadcast audio
+  broadcastAudioFromHTTP(callId, audioData) {
+    this.broadcastAudioData(callId, {
+      type: 'audio_data',
+      callId,
+      audioData: audioData.audioData,
+      audioType: audioData.audioType,
+      timestamp: audioData.timestamp || new Date().toISOString(),
+      sampleRate: audioData.sampleRate || 44100,
+      bitsPerSample: audioData.bitsPerSample || 16,
+      channels: audioData.channels || 2
+    });
   }
 
-  broadcastAudioData(audioData) {
-    if (this.io) {
-      // Broadcast to all Socket.IO clients monitoring any call
-      // This ensures audio reaches the frontend regardless of specific call ID
-      this.io.emit('audio_data', audioData);
-      
-      // Also broadcast to specific call monitoring rooms if they exist
-      this.io.to(`call_monitoring_${audioData.callId}`).emit(`call_audio_${audioData.callId}`, audioData);
-      
-      // Broadcast to general audio stream room
-      this.io.to('audio_stream').emit('audio_data', audioData);
-      
-      logger.debug(`Broadcasting audio data: ${audioData.audioType}, size: ${audioData.audioData.length}`);
+  broadcastAudioData(callId, audioData) {
+    if (!this.io) {
+      logger.warn('Socket.IO not available for audio broadcasting');
+      return;
     }
-  }
 
-  handleDisconnect(clientId) {
-    const client = this.clients.get(clientId);
-    if (client) {
-      logger.info(`Audio client disconnected: ${clientId}`);
-      this.clients.delete(clientId);
-    }
-  }
-
-  generateClientId() {
-    return `audio_client_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    // Broadcast to call monitoring room
+    this.io.to(`call_monitoring_${callId}`).emit(`call_audio_${callId}`, audioData);
+    
+    // Also broadcast to general audio stream room
+    this.io.to('audio_stream').emit('audio_data', audioData);
+    
+    logger.debug(`Broadcasted audio data for call ${callId}: ${audioData.audioType}, size: ${audioData.audioData ? audioData.audioData.length : 0}`);
   }
 
   getConnectedClients() {
     return this.clients.size;
   }
 
+  getActiveStreams() {
+    return this.activeStreams.size;
+  }
+
   stop() {
-    if (this.wss) {
-      this.wss.close();
-      this.wss = null;
-    }
+    logger.info('Audio streaming server stopped');
     this.clients.clear();
-    this.audioBuffers.clear();
+    this.activeStreams.clear();
   }
 }
 

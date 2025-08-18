@@ -1,21 +1,13 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { Box, Typography, IconButton, Slider, Chip } from '@mui/material';
-import {
-  PlayArrow as PlayIcon,
-  Pause as PauseIcon,
-  Stop as StopIcon,
-  VolumeUp as VolumeIcon,
-  Mic as MicIcon,
-  Speaker as SpeakerIcon
-} from '@mui/icons-material';
+import React, { useRef, useState, useEffect, useCallback } from 'react';
+import './AudioPlayer.css';
 
 interface AudioPlayerProps {
-  audioData: string; // Base64 encoded audio data
+  audioData: string; // base64 encoded audio data
   audioType: 'speaker' | 'mic';
-  sampleRate: number;
-  bitsPerSample: number;
-  channels: number;
-  timestamp: string;
+  sampleRate?: number;
+  bitsPerSample?: number;
+  channels?: number;
+  timestamp?: string;
   autoPlay?: boolean;
   onPlay?: () => void;
   onPause?: () => void;
@@ -25,24 +17,21 @@ interface AudioPlayerProps {
 const AudioPlayer: React.FC<AudioPlayerProps> = ({
   audioData,
   audioType,
-  sampleRate,
-  bitsPerSample,
-  channels,
+  sampleRate = 44100,
+  bitsPerSample = 16,
+  channels = 2,
   timestamp,
-  autoPlay = false,
+  autoPlay = true,
   onPlay,
   onPause,
   onStop
 }) => {
   const audioContextRef = useRef<AudioContext | null>(null);
-  const audioBufferRef = useRef<AudioBuffer | null>(null);
-  const sourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
-  
   const [isPlaying, setIsPlaying] = useState(false);
   const [volume, setVolume] = useState(0.7);
-  const [duration, setDuration] = useState(0);
-  const [currentTime, setCurrentTime] = useState(0);
+  const [audioBuffer, setAudioBuffer] = useState<Float32Array | null>(null);
+  const [isMuted, setIsMuted] = useState(false);
   const [audioLevel, setAudioLevel] = useState(0);
 
   // Initialize audio context
@@ -51,8 +40,9 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({
       audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
       gainNodeRef.current = audioContextRef.current.createGain();
       gainNodeRef.current.connect(audioContextRef.current.destination);
+      gainNodeRef.current.gain.value = isMuted ? 0 : volume;
     }
-  }, []);
+  }, [volume, isMuted]);
 
   // Convert base64 to ArrayBuffer
   const base64ToArrayBuffer = useCallback((base64: string): ArrayBuffer => {
@@ -65,402 +55,266 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({
   }, []);
 
   // Convert raw audio data to Float32Array
-  const convertToFloat32Array = useCallback((arrayBuffer: ArrayBuffer, bitsPerSample: number): Float32Array => {
-    console.log(`AudioPlayer: Converting audio data - bitsPerSample: ${bitsPerSample}, buffer size: ${arrayBuffer.byteLength}`);
+  const convertToFloat32Array = useCallback((arrayBuffer: ArrayBuffer): Float32Array => {
+    console.log(`AudioPlayer: Converting audio data - bitsPerSample: ${bitsPerSample}, channels: ${channels}, arrayBuffer size: ${arrayBuffer.byteLength}`);
     
-    if (bitsPerSample === 32) {
-      // Try 32-bit float first (more common in modern audio)
-      try {
-        const float32Data = new Float32Array(arrayBuffer);
-        console.log(`AudioPlayer: Using 32-bit float conversion, first 4 values:`, Array.from(float32Data.slice(0, 4)));
-        return float32Data;
-      } catch (error) {
-        console.log(`AudioPlayer: 32-bit float failed, trying integer conversion`);
-        // Fallback to 32-bit integer data (common in WASAPI)
-        const int32Data = new Int32Array(arrayBuffer);
-        const floatData = new Float32Array(int32Data.length);
-        for (let i = 0; i < int32Data.length; i++) {
-          // Use 2^31 - 1 for proper normalization
-          floatData[i] = int32Data[i] / 2147483647.0;
+    if (bitsPerSample === 16) {
+      const int16Array = new Int16Array(arrayBuffer);
+      const float32Array = new Float32Array(int16Array.length);
+      for (let i = 0; i < int16Array.length; i++) {
+        float32Array[i] = int16Array[i] / 32768.0; // Convert 16-bit to float
+      }
+      console.log(`AudioPlayer: Converted 16-bit audio - samples: ${int16Array.length}, max value: ${Math.max(...float32Array.map(Math.abs))}`);
+      return float32Array;
+    } else if (bitsPerSample === 32) {
+      // For 32-bit, check if it's already float or integer
+      const uint32Array = new Uint32Array(arrayBuffer);
+      const float32Array = new Float32Array(arrayBuffer);
+      
+      // Check if the data looks like float32 (values between -1 and 1)
+      // Use a more efficient approach to avoid stack overflow with large arrays
+      let maxAbsValue = 0;
+      for (let i = 0; i < Math.min(float32Array.length, 1000); i++) { // Check first 1000 samples
+        maxAbsValue = Math.max(maxAbsValue, Math.abs(float32Array[i]));
+      }
+      console.log(`AudioPlayer: 32-bit audio - max abs value: ${maxAbsValue}, samples: ${float32Array.length}`);
+      
+      if (maxAbsValue > 1.0) {
+        // Likely 32-bit integer, convert to float
+        const int32Array = new Int32Array(arrayBuffer);
+        const convertedArray = new Float32Array(int32Array.length);
+        for (let i = 0; i < int32Array.length; i++) {
+          convertedArray[i] = int32Array[i] / 2147483648.0; // Convert 32-bit int to float
         }
-        console.log(`AudioPlayer: Using 32-bit integer conversion, first 4 values:`, Array.from(floatData.slice(0, 4)));
-        return floatData;
+        
+        // Calculate max value efficiently
+        let convertedMax = 0;
+        for (let i = 0; i < Math.min(convertedArray.length, 1000); i++) {
+          convertedMax = Math.max(convertedMax, Math.abs(convertedArray[i]));
+        }
+        console.log(`AudioPlayer: Converted 32-bit int to float - max value: ${convertedMax}`);
+        return convertedArray;
+      } else {
+        // Already float32
+        console.log(`AudioPlayer: Using 32-bit float as-is - max value: ${maxAbsValue}`);
+        return float32Array;
       }
-    } else if (bitsPerSample === 16) {
-      // 16-bit PCM data
-      const pcmData = new Int16Array(arrayBuffer);
-      const floatData = new Float32Array(pcmData.length);
-      for (let i = 0; i < pcmData.length; i++) {
-        floatData[i] = pcmData[i] / 32768.0;
-      }
-      return floatData;
     } else {
-      // 8-bit PCM data
-      const pcmData = new Uint8Array(arrayBuffer);
-      const floatData = new Float32Array(pcmData.length);
-      for (let i = 0; i < pcmData.length; i++) {
-        floatData[i] = (pcmData[i] - 128) / 128.0;
+      // Default to 16-bit
+      const uint8Array = new Uint8Array(arrayBuffer);
+      const float32Array = new Float32Array(uint8Array.length);
+      for (let i = 0; i < uint8Array.length; i++) {
+        float32Array[i] = (uint8Array[i] - 128) / 128.0; // Convert 8-bit to float
       }
-      return floatData;
+      
+      // Calculate max value efficiently
+      let maxValue = 0;
+      for (let i = 0; i < Math.min(float32Array.length, 1000); i++) {
+        maxValue = Math.max(maxValue, Math.abs(float32Array[i]));
+      }
+      console.log(`AudioPlayer: Converted 8-bit audio - samples: ${uint8Array.length}, max value: ${maxValue}`);
+      return float32Array;
     }
-  }, []);
+  }, [bitsPerSample, channels]);
 
-  // Create audio buffer from data
-  const createAudioBuffer = useCallback(async (audioData: string) => {
+  // Play audio data immediately
+  const playAudioData = useCallback(async (audioData: string) => {
     try {
+      console.log(`AudioPlayer: Playing ${audioType} audio, size: ${audioData.length}`);
+      
+      // Initialize audio context if needed
       initializeAudioContext();
       
-      const audioContext = audioContextRef.current;
-      if (!audioContext) return null;
-
-      const arrayBuffer = base64ToArrayBuffer(audioData);
-      console.log(`AudioPlayer: Processing ${audioType} audio - buffer size: ${arrayBuffer.byteLength}, bitsPerSample: ${bitsPerSample}, channels: ${channels}, sampleRate: ${sampleRate}`);
-      
-      // Always log first few bytes to debug the issue
-      const uint8Array = new Uint8Array(arrayBuffer);
-      console.log(`AudioPlayer: First 16 bytes:`, Array.from(uint8Array.slice(0, 16)));
-      
-      const floatData = convertToFloat32Array(arrayBuffer, bitsPerSample);
-      
-      // Debug: Check if audio data is all zeros
-      let allZeros = true;
-      for (let i = 0; i < Math.min(floatData.length, 100); i++) {
-        if (Math.abs(floatData[i]) > 0.001) {
-          allZeros = false;
-          break;
-        }
-      }
-      
-      if (allZeros) {
-        console.warn(`AudioPlayer: ${audioType} audio data appears to be all zeros or very quiet`);
-        // Generate a test tone for debugging if audio is all zeros
-        if (audioType === 'speaker') {
-          console.log(`AudioPlayer: Generating frontend test tone for ${audioType} audio`);
-          const duration = 0.1; // 100ms
-          const frequency = 440; // A4 note
-          const amplitude = 0.3;
-          const numSamples = Math.floor(sampleRate * duration);
-          
-          for (let i = 0; i < numSamples; i++) {
-            floatData[i] = amplitude * Math.sin(2 * Math.PI * frequency * i / sampleRate);
-          }
-          console.log(`AudioPlayer: Generated test tone with amplitude: ${amplitude}, sampleRate: ${sampleRate}`);
-        }
-      } else {
-        const maxAmplitude = Math.max(...floatData.map(Math.abs));
-        console.log(`AudioPlayer: ${audioType} audio data contains non-zero values, max amplitude: ${maxAmplitude}`);
-      }
-      
-      // Amplify audio if it's too quiet
-      const maxAmplitude = Math.max(...floatData.map(Math.abs));
-      let amplificationFactor = 1.0;
-      
-      console.log(`AudioPlayer: ${audioType} max amplitude before amplification: ${maxAmplitude}`);
-      
-      if (maxAmplitude < 0.1) {
-        // Audio is quiet, amplify it
-        amplificationFactor = 10.0; // Amplify by 10x
-        console.log(`AudioPlayer: ${audioType} audio is quiet (max amplitude: ${maxAmplitude}), amplifying by ${amplificationFactor}x`);
-        
-        for (let i = 0; i < floatData.length; i++) {
-          floatData[i] *= amplificationFactor;
-          // Prevent clipping
-          if (floatData[i] > 1.0) floatData[i] = 1.0;
-          if (floatData[i] < -1.0) floatData[i] = -1.0;
-        }
-        
-        const newMaxAmplitude = Math.max(...floatData.map(Math.abs));
-        console.log(`AudioPlayer: ${audioType} max amplitude after amplification: ${newMaxAmplitude}`);
-      }
-      
-      // Calculate audio level (RMS for better representation)
-      let sumSquares = 0;
-      for (let i = 0; i < floatData.length; i++) {
-        sumSquares += floatData[i] * floatData[i];
-      }
-      const rms = Math.sqrt(sumSquares / floatData.length);
-      setAudioLevel(rms);
-      
-      console.log(`AudioPlayer: ${audioType} audio level (RMS): ${(rms * 100).toFixed(1)}% after amplification`);
-
-      // Create audio buffer - use actual sample rate from audio data
-      // Validate sample rate to prevent issues
-      const validSampleRate = (sampleRate >= 8000 && sampleRate <= 192000) ? sampleRate : 48000;
-      if (sampleRate !== validSampleRate) {
-        console.warn(`AudioPlayer: Invalid sample rate ${sampleRate}Hz, using ${validSampleRate}Hz`);
-      } else {
-        console.log(`AudioPlayer: Using sample rate from audio data: ${sampleRate}Hz`);
-      }
-      
-      // Check if we need to resample audio for better playback
-      let finalSampleRate = validSampleRate;
-      if (validSampleRate > 44100) {
-        // If sample rate is too high, use 44.1kHz for better compatibility
-        finalSampleRate = 44100;
-        console.log(`AudioPlayer: Resampling from ${validSampleRate}Hz to ${finalSampleRate}Hz for better compatibility`);
-      }
-      
-      console.log(`AudioPlayer: Creating audio buffer - channels: ${channels}, samples: ${floatData.length / channels}, sampleRate: ${finalSampleRate}`);
-      
-      const audioBuffer = audioContext.createBuffer(
-        channels,
-        floatData.length / channels,
-        finalSampleRate
-      );
-
-      // Fill audio buffer with data - simplified approach
-      console.log(`AudioPlayer: Filling audio buffer - channels: ${channels}, floatData length: ${floatData.length}`);
-      
-      if (channels === 1) {
-        // Mono audio - copy directly
-        const channelData = audioBuffer.getChannelData(0);
-        for (let i = 0; i < channelData.length; i++) {
-          channelData[i] = floatData[i];
-        }
-        console.log(`AudioPlayer: Filled mono channel with ${channelData.length} samples`);
-      } else {
-        // Stereo audio - copy same data to both channels for now
-        for (let channel = 0; channel < channels; channel++) {
-          const channelData = audioBuffer.getChannelData(channel);
-          for (let i = 0; i < channelData.length; i++) {
-            channelData[i] = floatData[i];
-          }
-        }
-        console.log(`AudioPlayer: Filled ${channels} stereo channels with ${audioBuffer.getChannelData(0).length} samples each`);
-      }
-
-      audioBufferRef.current = audioBuffer;
-      setDuration(audioBuffer.duration);
-
-      return audioBuffer;
-    } catch (error) {
-      console.error('Error creating audio buffer:', error);
-      return null;
-    }
-  }, [audioData, bitsPerSample, channels, sampleRate, initializeAudioContext, base64ToArrayBuffer, convertToFloat32Array]);
-
-  // Play audio
-  const playAudio = useCallback(async () => {
-    try {
-      console.log(`AudioPlayer: playAudio called for ${audioType} - data length: ${audioData.length}`);
-      
-      if (!audioContextRef.current || !audioBufferRef.current) {
-        console.log(`AudioPlayer: Creating new audio buffer for ${audioType}`);
-        const audioBuffer = await createAudioBuffer(audioData);
-        if (!audioBuffer) {
-          console.error(`AudioPlayer: Failed to create audio buffer for ${audioType}`);
-          return;
-        }
-      }
-
-      const audioContext = audioContextRef.current;
-      if (!audioContext) {
-        console.error(`AudioPlayer: No audio context available for ${audioType}`);
+      if (!audioContextRef.current) {
+        console.error('AudioPlayer: No audio context available');
         return;
       }
 
-      if (audioContext.state === 'closed') {
-        console.log(`AudioPlayer: Audio context is closed, creating new one for ${audioType}`);
-        // Create a new audio context if the current one is closed
-        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-        gainNodeRef.current = audioContextRef.current.createGain();
-        gainNodeRef.current.connect(audioContextRef.current.destination);
-        return; // Retry on next audio data
-      } else if (audioContext.state === 'suspended') {
-        console.log(`AudioPlayer: Resuming suspended audio context for ${audioType}`);
-        await audioContext.resume();
+      // Resume audio context if suspended
+      if (audioContextRef.current.state === 'suspended') {
+        await audioContextRef.current.resume();
+      }
+      
+      // Check for sample rate mismatch
+      if (audioContextRef.current.sampleRate !== sampleRate) {
+        console.warn(`AudioPlayer: Sample rate mismatch - context: ${audioContextRef.current.sampleRate}Hz, audio: ${sampleRate}Hz`);
+        // This might cause audio distortion, but we'll continue anyway
       }
 
-      // Stop any currently playing audio
-      if (sourceNodeRef.current) {
-        sourceNodeRef.current.stop();
+      // Convert base64 to audio buffer
+      const arrayBuffer = base64ToArrayBuffer(audioData);
+      
+      // Validate array buffer
+      if (arrayBuffer.byteLength === 0) {
+        console.error('AudioPlayer: Empty array buffer');
+        return;
+      }
+      
+      const float32Array = convertToFloat32Array(arrayBuffer);
+      
+      // Validate float32 array
+      if (float32Array.length === 0) {
+        console.error('AudioPlayer: Empty float32 array');
+        return;
+      }
+      
+      console.log(`AudioPlayer: Creating audio buffer - channels: ${channels}, sampleRate: ${sampleRate}, float32Array length: ${float32Array.length}`);
+      
+      // Validate audio buffer parameters
+      const samplesPerChannel = Math.floor(float32Array.length / channels);
+      if (samplesPerChannel <= 0) {
+        console.error(`AudioPlayer: Invalid samples per channel: ${samplesPerChannel}`);
+        return;
+      }
+      
+      // Create audio buffer
+      const audioBuffer = audioContextRef.current.createBuffer(
+        channels,
+        samplesPerChannel,
+        sampleRate
+      );
+      
+      console.log(`AudioPlayer: Audio buffer created - duration: ${audioBuffer.duration}s, length: ${audioBuffer.length}`);
+      
+      // Skip very short audio buffers that might cause issues
+      if (audioBuffer.duration < 0.1) { // Less than 100ms
+        console.log(`AudioPlayer: Skipping very short audio buffer (${audioBuffer.duration}s)`);
+        return;
+      }
+      
+      // Fill audio buffer with data
+      for (let channel = 0; channel < channels; channel++) {
+        const channelData = audioBuffer.getChannelData(channel);
+        for (let i = 0; i < channelData.length; i++) {
+          const sampleIndex = i * channels + channel;
+          channelData[i] = float32Array[sampleIndex] || 0;
+        }
+        
+        // Debug: Check channel data (efficient calculation)
+        let channelMax = 0;
+        for (let i = 0; i < Math.min(channelData.length, 1000); i++) {
+          channelMax = Math.max(channelMax, Math.abs(channelData[i]));
+        }
+        console.log(`AudioPlayer: Channel ${channel} - max value: ${channelMax}, samples: ${channelData.length}`);
       }
 
-      // Create new source node
-      sourceNodeRef.current = audioContext.createBufferSource();
-      sourceNodeRef.current.buffer = audioBufferRef.current;
-      sourceNodeRef.current.connect(gainNodeRef.current!);
+      // Create source node
+      const source = audioContextRef.current.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(gainNodeRef.current!);
 
-      // Set volume
-      gainNodeRef.current!.gain.value = volume;
+      // Calculate audio level for visualization (efficient calculation)
+      let maxLevel = 0;
+      const step = Math.max(1, Math.floor(float32Array.length / 1000)); // Sample every Nth value
+      for (let i = 0; i < float32Array.length; i += step) {
+        maxLevel = Math.max(maxLevel, Math.abs(float32Array[i]));
+      }
+      setAudioLevel(maxLevel);
 
-      // Set up event handlers
-      sourceNodeRef.current.onended = () => {
-        setIsPlaying(false);
-        setCurrentTime(0);
-        onStop?.();
-      };
-
-      // Start playing
-      sourceNodeRef.current.start(0);
+      // Play audio
+      source.start(0);
       setIsPlaying(true);
       onPlay?.();
 
-      // Update current time
-      const startTime = audioContext.currentTime;
-      const updateTime = () => {
-        if (sourceNodeRef.current && isPlaying) {
-          const elapsed = audioContext.currentTime - startTime;
-          setCurrentTime(Math.min(elapsed, duration));
-          if (elapsed < duration) {
-            requestAnimationFrame(updateTime);
-          }
-        }
+      // Set up cleanup
+      source.onended = () => {
+        setIsPlaying(false);
+        onStop?.();
       };
-      updateTime();
 
+      console.log(`AudioPlayer: Started playing ${audioType} audio`);
+      
     } catch (error) {
-      console.error('Error playing audio:', error);
+      console.error(`AudioPlayer: Error playing ${audioType} audio:`, error);
     }
-  }, [audioData, volume, duration, isPlaying, onPlay, onStop, createAudioBuffer]);
+  }, [audioType, sampleRate, bitsPerSample, channels, initializeAudioContext, base64ToArrayBuffer, convertToFloat32Array, onPlay, onStop]);
 
-  // Pause audio
-  const pauseAudio = useCallback(() => {
-    if (sourceNodeRef.current) {
-      sourceNodeRef.current.stop();
-      sourceNodeRef.current = null;
-    }
-    setIsPlaying(false);
-    onPause?.();
-  }, [onPause]);
-
-  // Stop audio
-  const stopAudio = useCallback(() => {
-    if (sourceNodeRef.current) {
-      sourceNodeRef.current.stop();
-      sourceNodeRef.current = null;
-    }
-    setIsPlaying(false);
-    setCurrentTime(0);
-    onStop?.();
-  }, [onStop]);
-
-  // Handle volume change
-  const handleVolumeChange = useCallback((event: Event, newValue: number | number[]) => {
-    const newVolume = newValue as number;
-    setVolume(newVolume);
-    if (gainNodeRef.current) {
-      gainNodeRef.current.gain.value = newVolume;
-    }
-  }, []);
-
-  // Auto-play when new audio data arrives
+  // Auto-play when audio data changes
   useEffect(() => {
-    if (autoPlay && audioData) {
-      // Reduce console spam - only log occasionally
-      const logCount = Math.floor(Math.random() * 10);
-      if (logCount === 0) {
-        console.log(`AudioPlayer: Auto-play triggered for ${audioType} audio (data length: ${audioData.length})`);
-      }
-      playAudio();
+    console.log(`AudioPlayer [${audioType}]: audioData changed:`, {
+      hasData: !!audioData,
+      dataLength: audioData ? audioData.length : 0,
+      autoPlay,
+      sampleRate,
+      bitsPerSample,
+      channels
+    });
+    
+    if (audioData && audioData.length > 0 && autoPlay) {
+      console.log(`AudioPlayer [${audioType}]: Attempting to play audio data`);
+      playAudioData(audioData);
+    } else {
+      console.log(`AudioPlayer [${audioType}]: Skipping playback - no data or autoPlay disabled`);
     }
-  }, [audioData, autoPlay, playAudio, audioType]);
+  }, [audioData, autoPlay, playAudioData]);
+
+  // Update volume when it changes
+  useEffect(() => {
+    if (gainNodeRef.current) {
+      gainNodeRef.current.gain.value = isMuted ? 0 : volume;
+    }
+  }, [volume, isMuted]);
+
+  // Handle mute toggle
+  const handleMuteToggle = () => {
+    setIsMuted(!isMuted);
+    if (gainNodeRef.current) {
+      gainNodeRef.current.gain.value = !isMuted ? 0 : volume;
+    }
+  };
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (sourceNodeRef.current) {
-        sourceNodeRef.current.stop();
+      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+        audioContextRef.current.close();
       }
-      // Don't close the audio context - let it be reused
-      // if (audioContextRef.current) {
-      //   audioContextRef.current.close();
-      // }
     };
   }, []);
 
-  const formatTime = (time: number) => {
-    const minutes = Math.floor(time / 60);
-    const seconds = Math.floor(time % 60);
-    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
-  };
-
-  const getAudioTypeIcon = () => {
-    return audioType === 'mic' ? <MicIcon /> : <SpeakerIcon />;
-  };
-
-  const getAudioTypeColor = () => {
-    return audioType === 'mic' ? 'primary' : 'secondary';
-  };
-
   return (
-    <Box sx={{ p: 2, border: 1, borderColor: 'divider', borderRadius: 1 }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-        <Chip
-          icon={getAudioTypeIcon()}
-          label={audioType.toUpperCase()}
-          color={getAudioTypeColor()}
-          size="small"
-          sx={{ mr: 1 }}
-        />
-        <Typography variant="caption" color="text.secondary">
-          {formatTime(currentTime)} / {formatTime(duration)}
-        </Typography>
-        <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center' }}>
-          <Typography variant="caption" sx={{ mr: 1 }}>
-            Level: {(audioLevel * 100).toFixed(1)}%
-          </Typography>
-          <Box
-            sx={{
-              width: 50,
-              height: 8,
-              bgcolor: 'grey.300',
-              borderRadius: 1,
-              overflow: 'hidden'
-            }}
-          >
-            <Box
-              sx={{
-                width: `${audioLevel * 100}%`,
-                height: '100%',
-                bgcolor: audioLevel > 0.5 ? 'error.main' : 'success.main',
-                transition: 'width 0.1s ease'
-              }}
-            />
-          </Box>
-        </Box>
-      </Box>
-
-      <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-        <IconButton
-          onClick={isPlaying ? pauseAudio : playAudio}
-          color="primary"
-          size="small"
+    <div className="audio-player">
+      <div className="audio-info">
+        <span className={`audio-type ${audioType}`}>{audioType.toUpperCase()}</span>
+        <span className="audio-level">
+          Level: {(audioLevel * 100).toFixed(1)}%
+        </span>
+        <span className="audio-status">
+          {isPlaying ? 'Playing' : 'Stopped'}
+        </span>
+      </div>
+      
+      <div className="audio-controls">
+        <button 
+          onClick={handleMuteToggle}
+          className={`mute-button ${isMuted ? 'muted' : ''}`}
+          disabled={!audioData || audioData.length === 0}
         >
-          {isPlaying ? <PauseIcon /> : <PlayIcon />}
-        </IconButton>
-        <IconButton onClick={stopAudio} color="secondary" size="small">
-          <StopIcon />
-        </IconButton>
+          {isMuted ? '🔇 Unmute' : '🔊 Mute'}
+        </button>
         
-        <Box sx={{ display: 'flex', alignItems: 'center', ml: 2, flex: 1 }}>
-          <VolumeIcon sx={{ mr: 1, fontSize: 16 }} />
-          <Slider
+        <div className="volume-control">
+          <label>Volume:</label>
+          <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.1"
             value={volume}
-            onChange={handleVolumeChange}
-            min={0}
-            max={1}
-            step={0.01}
-            size="small"
-            sx={{ width: 100 }}
+            onChange={(e) => setVolume(parseFloat(e.target.value))}
+            className="volume-slider"
+            disabled={isMuted}
           />
-        </Box>
-      </Box>
-
-      <Slider
-        value={currentTime}
-        max={duration}
-        step={0.01}
-        size="small"
-        disabled
-        sx={{ width: '100%' }}
-      />
-
-      <Typography variant="caption" color="text.secondary">
-        {new Date(timestamp).toLocaleTimeString()} | 
-        {sampleRate}Hz, {bitsPerSample}bit, {channels}ch
-      </Typography>
-    </Box>
+          <span>{Math.round(volume * 100)}%</span>
+        </div>
+      </div>
+      
+      {timestamp && (
+        <div className="audio-timestamp">
+          {new Date(timestamp).toLocaleTimeString()}
+        </div>
+      )}
+    </div>
   );
 };
 

@@ -5,7 +5,7 @@ import type { AxiosInstance, InternalAxiosRequestConfig, AxiosResponse } from 'a
 const api: AxiosInstance = axios.create({
   // In development, use relative URLs to work with Vite proxy
   // In production, use the full URL
-  baseURL: import.meta.env.DEV ? '/api' : (import.meta.env.VITE_API_URL || 'http://localhost:3001/api'),
+  baseURL: import.meta.env.DEV ? '/api' : (import.meta.env.VITE_API_URL || 'http://localhost:3002/api'),
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
@@ -14,7 +14,7 @@ const api: AxiosInstance = axios.create({
 
 // Log the base URL for debugging
 console.log('Environment:', import.meta.env.DEV ? 'Development' : 'Production');
-console.log('API Base URL:', import.meta.env.DEV ? '/api' : (import.meta.env.VITE_API_URL || 'http://localhost:3001/api'));
+console.log('API Base URL:', import.meta.env.DEV ? '/api' : (import.meta.env.VITE_API_URL || 'http://localhost:3002/api'));
 
 // Request interceptor to add auth token
 api.interceptors.request.use(
