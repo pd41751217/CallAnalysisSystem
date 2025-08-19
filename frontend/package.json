@@ -4,13 +4,14 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "node server.js",
     "build": "tsc -b && vite build",
     "deploy": "serve -d dist",
     "lint": "eslint .",
     "preview": "vite preview",
     "start": "node server.js",
-    "start:serve": "npx serve -s dist -l $PORT"
+    "start:serve": "npx serve -s dist -l $PORT",
+    "dev:vite": "vite --host 0.0.0.0"
   },
   "dependencies": {
     "@emotion/react": "^11.11.1",

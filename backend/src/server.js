@@ -1,6 +1,10 @@
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import morgan from 'morgan';
+import compression from 'compression';
+import rateLimit from 'express-rate-limit';
+import slowDown from 'express-slow-down';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import dotenv from 'dotenv';
@@ -11,6 +15,8 @@ import { fileURLToPath } from 'url';
 import authRoutes from './routes/auth.js';
 import userRoutes from './routes/users.js';
 import callRoutes from './routes/calls.js';
+import analysisRoutes from './routes/analysis.js';
+import dashboardRoutes from './routes/dashboard.js';
 
 // Import middleware
 import { errorHandler } from './middleware/errorHandler.js';
@@ -110,13 +116,56 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
 
-// Rate limiting removed for production deployment
+// Rate limiting
+const limiter = rateLimit({
+  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minutes
+  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100, // limit each IP to 100 requests per windowMs
+  message: {
+    error: 'Too many requests from this IP, please try again later.'
+  }
+});
+
+// Speed limiting
+const speedLimiter = slowDown({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  delayAfter: 50, // allow 50 requests per 15 minutes, then...
+  delayMs: () => 500 // begin adding 500ms of delay per request above 50
+});
+
+// Apply rate limiting to all API routes except dashboard updates
+app.use('/api/', (req, res, next) => {
+  // Skip rate limiting for dashboard updates endpoint
+  if (req.path === '/dashboard/updates') {
+    return next();
+  }
+  return limiter(req, res, next);
+});
+
+app.use('/api/', (req, res, next) => {
+  // Skip speed limiting for dashboard updates endpoint
+  if (req.path === '/dashboard/updates') {
+    return next();
+  }
+  return speedLimiter(req, res, next);
+});
 
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Logging middleware removed for production deployment
+// Compression middleware
+app.use(compression());
+
+// Logging middleware
+if (process.env.NODE_ENV === 'development') {
+  app.use(morgan('dev'));
+} else {
+  app.use(morgan('combined', {
+    stream: {
+      write: (message) => logger.info(message.trim())
+    }
+  }));
+}
 
 // Static files
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
@@ -132,7 +181,9 @@ app.get('/', (req, res) => {
       api: '/api',
       auth: '/api/auth',
       users: '/api/users',
-      calls: '/api/calls'
+      calls: '/api/calls',
+      dashboard: '/api/dashboard',
+      analysis: '/api/analysis'
     }
   });
 });
@@ -157,12 +208,20 @@ app.get('/api/test', (req, res) => {
   });
 });
 
-// Debug middleware removed for production deployment
+// Debug middleware to log all requests
+app.use((req, res, next) => {
+  console.log(`${req.method} ${req.originalUrl} - ${new Date().toISOString()}`);
+  console.log('Origin:', req.headers.origin);
+  console.log('User-Agent:', req.headers['user-agent']);
+  next();
+});
 
 // API routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/calls', callRoutes);
+app.use('/api/analysis', analysisRoutes);
+app.use('/api/dashboard', dashboardRoutes);
 
 // Setup Socket.IO handlers
 setupSocketHandlers(io);

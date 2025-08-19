@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "start": "cd backend && node src/server.js",
-    "front": "cd frontend && npm run dev",
+    "front": "cd frontend && npm run dev -- --host",
     "launch": "concurrently \"npm run start\" \"npm run front\""
   },
   "dependencies": {
