@@ -71,8 +71,19 @@ const webrtcServer = new WebRTCServer(io);
 app.set('audioStreamServer', audioStreamServer);
 app.set('webrtcServer', webrtcServer);
 
-// WebRTC server runs on separate port (3001 or WEBRTC_PORT)
-// No need to attach to main HTTP server
+// WebRTC server shares main HTTP server port
+server.on('upgrade', (request, socket, head) => {
+    const pathname = new URL(request.url, `http://${request.headers.host}`).pathname;
+    
+    if (pathname === '/webrtc') {
+        console.log('🔧 WebRTC upgrade request received on main server');
+        webrtcServer.wss.handleUpgrade(request, socket, head, (ws) => {
+            webrtcServer.wss.emit('connection', ws, request);
+        });
+    } else {
+        socket.destroy();
+    }
+});
 
 // Test Supabase connection
 import { testSupabaseConnection } from './config/supabase.js';

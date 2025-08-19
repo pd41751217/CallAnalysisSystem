@@ -15,14 +15,13 @@ class WebRTCServer {
     }
 
     setupRawWebSocketHandler() {
-        // Create a separate WebSocket server for raw connections (C++ client)
-        const webrtcPort = process.env.WEBRTC_PORT || 3001;
+        // Use noServer to share the main HTTP server port
         this.wss = new WebSocketServer({ 
-            port: webrtcPort,
+            noServer: true,
             path: '/webrtc'
         });
 
-        console.log(`🔧 Raw WebSocket server started on port ${webrtcPort}`);
+        console.log(`🔧 Raw WebSocket server configured to share main HTTP server port`);
         
         this.wss.on('connection', (ws, req) => {
             console.log('🔗 Raw WebSocket Client connected:', req.socket.remoteAddress);
