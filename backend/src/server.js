@@ -52,13 +52,6 @@ const io = new Server(server, {
     credentials: true
   }
 });
-// const io = new Server(server, {
-//   cors: {
-//     origin: "*",
-//     methods: ["GET", "POST"],
-//     credentials: false
-//   }
-// });
 
 // Make io available to routes
 app.set('io', io);
@@ -70,20 +63,6 @@ const webrtcServer = new WebRTCServer(io);
 // Make servers available to routes
 app.set('audioStreamServer', audioStreamServer);
 app.set('webrtcServer', webrtcServer);
-
-// WebRTC server shares main HTTP server port
-server.on('upgrade', (request, socket, head) => {
-    const pathname = new URL(request.url, `http://${request.headers.host}`).pathname;
-    
-    if (pathname === '/webrtc') {
-        console.log('🔧 WebRTC upgrade request received on main server');
-        webrtcServer.wss.handleUpgrade(request, socket, head, (ws) => {
-            webrtcServer.wss.emit('connection', ws, request);
-        });
-    } else {
-        socket.destroy();
-    }
-});
 
 // Test Supabase connection
 import { testSupabaseConnection } from './config/supabase.js';
@@ -114,15 +93,18 @@ const allowedOrigins = [
   "http://localhost:3000", 
   "https://callanalysissystem.onrender.com",
   "https://callanalysissystem-frontend.onrender.com",
-  "https://callanalysissystem-backend.onrender.com"
+  "null"
 ];
+
+// Filter out undefined values
+const validOrigins = allowedOrigins.filter(origin => origin && origin !== "null");
 
 app.use(cors({
   origin: function (origin, callback) {
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
     
-    if (allowedOrigins.indexOf(origin) !== -1) {
+    if (validOrigins.indexOf(origin) !== -1) {
       callback(null, true);
     } else {
       console.log('CORS blocked origin:', origin);
@@ -214,17 +196,6 @@ app.get('/health', (req, res) => {
     uptime: process.uptime(),
     environment: process.env.NODE_ENV
   });
-});
-
-// Robots.txt endpoint
-app.get('/robots.txt', (req, res) => {
-  res.type('text/plain');
-  res.send('User-agent: *\nDisallow: /api/\nAllow: /');
-});
-
-// Favicon endpoint
-app.get('/favicon.ico', (req, res) => {
-  res.status(204).end(); // No content
 });
 
 // Test API endpoint
