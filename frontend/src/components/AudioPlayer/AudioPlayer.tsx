@@ -18,7 +18,7 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({
   sampleRate = 44100,
   bitsPerSample = 16,
   channels = 2,
-  timestamp,
+  // timestamp, // Unused - removed for deployment
   autoPlay = true,
   onPlay
 }) => {
@@ -35,12 +35,12 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({
   const animationFrameRef = useRef<number | null>(null);
   
   // State
-  const [isPlaying, setIsPlaying] = useState(false);
+  // const [isPlaying, setIsPlaying] = useState(false); // Unused - removed for deployment
   const [volume, setVolume] = useState(0.7);
   const [isMuted, setIsMuted] = useState(false);
-  const [audioLevel, setAudioLevel] = useState(0);
+  // const [audioLevel, setAudioLevel] = useState(0); // Unused - removed for deployment
   const [peakLevel, setPeakLevel] = useState(0);
-  const [frequencyData, setFrequencyData] = useState<Uint8Array>(new Uint8Array(128));
+  // const [frequencyData, setFrequencyData] = useState<Uint8Array>(new Uint8Array(128)); // Unused - removed for deployment
   
   // Prebuffering for gap-free playback
   const prebufferSize = 200; // 0.2 second prebuffer for smoother start
@@ -103,16 +103,16 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({
 
       // Get frequency data
       analyser.getByteFrequencyData(dataArray);
-      setFrequencyData(new Uint8Array(dataArray));
+      // setFrequencyData(new Uint8Array(dataArray)); // Unused - removed for deployment
 
-      // Calculate audio level (RMS)
-      let sum = 0;
-      for (let i = 0; i < bufferLength; i++) {
-        sum += dataArray[i] * dataArray[i];
-      }
-      const rms = Math.sqrt(sum / bufferLength);
-      const level = (rms / 255) * 100; // Convert to percentage
-      setAudioLevel(level);
+      // Calculate audio level (RMS) - commented out for deployment
+      // let sum = 0;
+      // for (let i = 0; i < bufferLength; i++) {
+      //   sum += dataArray[i] * dataArray[i];
+      // }
+      // const rms = Math.sqrt(sum / bufferLength);
+      // const level = (rms / 255) * 100; // Convert to percentage - unused
+      // setAudioLevel(level); // Unused - removed for deployment
 
       // Update peak level
       const maxValue = Math.max(...dataArray);
@@ -197,7 +197,7 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({
           if (!isStreamingRef.current) {
             console.log(`AudioPlayer [${audioType}]: Starting continuous audio stream`);
             isStreamingRef.current = true;
-            setIsPlaying(true);
+            // setIsPlaying(true); // Unused - removed for deployment
             onPlay?.();
             
             // Initialize continuous streaming; schedule slightly in the future to avoid past starts
@@ -219,7 +219,7 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({
             if (isStreamingRef.current || !audioContextRef.current) return; // Already started by another chunk or no context
             
             isStreamingRef.current = true;
-            setIsPlaying(true);
+            // setIsPlaying(true); // Unused - removed for deployment
             onPlay?.();
             
             // Initialize continuous streaming
