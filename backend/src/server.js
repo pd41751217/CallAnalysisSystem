@@ -71,6 +71,19 @@ const webrtcServer = new WebRTCServer(io);
 app.set('audioStreamServer', audioStreamServer);
 app.set('webrtcServer', webrtcServer);
 
+// Attach WebSocket server to HTTP server for /webrtc path
+server.on('upgrade', (request, socket, head) => {
+  const pathname = new URL(request.url, `http://${request.headers.host}`).pathname;
+  
+  if (pathname === '/webrtc') {
+    webrtcServer.wss.handleUpgrade(request, socket, head, (ws) => {
+      webrtcServer.wss.emit('connection', ws, request);
+    });
+  } else {
+    socket.destroy();
+  }
+});
+
 // Test Supabase connection
 import { testSupabaseConnection } from './config/supabase.js';
 testSupabaseConnection().then((isConnected) => {
