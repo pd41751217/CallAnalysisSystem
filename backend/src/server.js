@@ -58,7 +58,7 @@ app.set('io', io);
 
 // Initialize servers
 const audioStreamServer = new AudioStreamServer(io);
-const webrtcServer = new WebRTCServer();
+const webrtcServer = new WebRTCServer(io);
 
 // Make servers available to routes
 app.set('audioStreamServer', audioStreamServer);
@@ -230,9 +230,8 @@ setupSocketHandlers(io);
 setSocketIO(io);
 
 // Setup WebRTC handlers
-io.on('connection', (socket) => {
-  webrtcServer.handleConnection(socket);
-});
+// The WebRTC server handles its own connections internally
+// No need to manually call handleConnection
 
 // Start audio streaming server
 audioStreamServer.start();

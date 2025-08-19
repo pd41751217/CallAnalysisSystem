@@ -46,7 +46,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { dashboardService } from '../../services';
 import type { DashboardUser, ActiveCall, DashboardMetrics } from '../../services';
 import { useSocket } from '../../contexts/SocketContext';
-import AudioPlayer from '../../components/AudioPlayer/AudioPlayer';
+import WebRTCAudioPlayer from '../../components/WebRTCAudioPlayer/WebRTCAudioPlayer';
 
 
 const Dashboard: React.FC = () => {
@@ -58,23 +58,8 @@ const Dashboard: React.FC = () => {
   const [monitoringCall, setMonitoringCall] = useState<string | null>(null);
   const [monitoringDialog, setMonitoringDialog] = useState(false);
   const [audioStream, setAudioStream] = useState<EventSource | null>(null);
-  const [monitoringAudioData, setMonitoringAudioData] = useState<{
-    speaker?: {
-      audioData: string;
-      timestamp: string;
-      sampleRate: number;
-      bitsPerSample: number;
-      channels: number;
-    };
-    mic?: {
-      audioData: string;
-      timestamp: string;
-      sampleRate: number;
-      bitsPerSample: number;
-      channels: number;
-    };
-  }>({});
-
+   
+ 
   const [sseConnected, setSseConnected] = useState(false);
   const processedEventsRef = useRef<Set<string>>(new Set());
   const [dashboardConnected, setDashboardConnected] = useState(false);
@@ -484,46 +469,7 @@ const Dashboard: React.FC = () => {
         // Join the call monitoring room
         socket.emit('join_call_monitoring', { callId });
         
-        // Listen for audio data
-        socket.on(`call_audio_${callId}`, (data) => {
-          console.log('=== AUDIO DATA RECEIVED ===');
-          console.log('Full audio data object:', data);
-          console.log('Audio data size:', data.audioData ? data.audioData.length : 0);
-          console.log('Audio type:', data.audioType);
-          console.log('Call ID:', data.callId);
-          console.log('User ID:', data.userId);
-          console.log('Audio format:', {
-            sampleRate: data.sampleRate,
-            bitsPerSample: data.bitsPerSample,
-            channels: data.channels
-          });
-          console.log('Data type:', data.type);
-          console.log('Has audioData:', !!data.audioData);
-          console.log('AudioData length:', data.audioData ? data.audioData.length : 'N/A');
-          console.log('AudioData preview (first 50 chars):', data.audioData ? data.audioData.substring(0, 50) + '...' : 'N/A');
-          console.log('==========================');
-          
-          if (data.type === 'audio_data' && data.audioData) {
-            console.log(`Storing ${data.audioType} audio data in state`);
-            // Store audio data for display in the monitoring dialog
-            setMonitoringAudioData(prev => {
-              const newState = {
-                ...prev,
-                [data.audioType]: {
-                  audioData: data.audioData,
-                  timestamp: data.timestamp,
-                  sampleRate: data.sampleRate,
-                  bitsPerSample: data.bitsPerSample,
-                  channels: data.channels
-                }
-              };
-              console.log('Updated monitoringAudioData state:', newState);
-              return newState;
-            });
-          } else {
-            console.warn('Invalid audio data received:', data);
-          }
-        });
+
 
         // Listen for call info updates
         socket.on(`call_info_${callId}`, (data) => {
@@ -552,7 +498,6 @@ const Dashboard: React.FC = () => {
       socket.emit('leave_call_monitoring', { callId: monitoringCall });
       
       // Remove event listeners
-      socket.off(`call_audio_${monitoringCall}`);
       socket.off(`call_info_${monitoringCall}`);
     }
     
@@ -919,7 +864,7 @@ const Dashboard: React.FC = () => {
                   Status: {socketConnected ? 'Connected' : 'Disconnected'}
                 </Typography>
                 <Typography variant="body2" color="textSecondary">
-                  Audio: {socketConnected ? 'Streaming' : 'Not available'}
+                   Audio: {socketConnected ? 'WebRTC Streaming' : 'Not available'}
                 </Typography>
                 <Typography variant="body2" color="textSecondary">
                   Status: {audioStatus === 'playing' ? 'Playing' : audioStatus === 'error' ? 'Error' : 'Ready'}
@@ -933,39 +878,42 @@ const Dashboard: React.FC = () => {
             )}
             
             <Typography variant="body2" color="textSecondary" mt={2}>
-              Audio data is being received and played in real-time. Check the browser console for detailed logs.
+               WebRTC audio streams provide real-time, low-latency audio playback with native browser audio APIs for optimal performance.
             </Typography>
-            
-            {/* Audio Players */}
-            <Box mt={3}>
-              <Typography variant="h6" gutterBottom>
-                Live Audio Streams
-              </Typography>
-              
-              {/* Microphone Audio Stream */}
-              <Box mb={2}>
-                <AudioPlayer
-                  audioData={monitoringAudioData.mic?.audioData || ""}
-                  audioType="mic"
-                  autoPlay={true}
-                  sampleRate={monitoringAudioData.mic?.sampleRate || 44100}
-                  bitsPerSample={monitoringAudioData.mic?.bitsPerSample || 16}
-                  channels={monitoringAudioData.mic?.channels || 2}
-                />
-              </Box>
-              
-              {/* Speaker Audio Stream */}
-              <Box mb={2}>
-                <AudioPlayer
-                  audioData={monitoringAudioData.speaker?.audioData || ""}
-                  audioType="speaker"
-                  autoPlay={true}
-                  sampleRate={monitoringAudioData.speaker?.sampleRate || 44100}
-                  bitsPerSample={monitoringAudioData.speaker?.bitsPerSample || 16}
-                  channels={monitoringAudioData.speaker?.channels || 2}
-                />
-              </Box>
-            </Box>
+             
+             {/* WebRTC Audio Players */}
+             <Box mt={3}>
+               <Typography variant="h6" gutterBottom>
+                 Live Audio Streams
+               </Typography>
+               
+               <Box display="flex" gap={2} flexWrap="wrap">
+                 {/* Microphone */}
+                 <Box flex={1} minWidth={300}>
+                   {monitoringCall && (
+                     <WebRTCAudioPlayer
+                       callId={monitoringCall}
+                       audioType="mic"
+                       autoPlay={true}
+                       onConnectionStateChange={(state) => console.log('Mic WebRTC state:', state)}
+                       onAudioLevelChange={(level) => console.log('Mic audio level:', level)}
+                     />
+                   )}
+                 </Box>
+                 {/* Speaker */}
+                 <Box flex={1} minWidth={300}>
+                   {monitoringCall && (
+                     <WebRTCAudioPlayer
+                       callId={monitoringCall}
+                       audioType="speaker"
+                       autoPlay={true}
+                       onConnectionStateChange={(state) => console.log('Speaker WebRTC state:', state)}
+                       onAudioLevelChange={(level) => console.log('Speaker audio level:', level)}
+                     />
+                   )}
+                 </Box>
+               </Box>
+             </Box>
           </Box>
         </DialogContent>
         <DialogActions>
