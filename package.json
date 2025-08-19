@@ -1,0 +1,45 @@
+{
+  "name": "call-analysis-backend",
+  "version": "1.0.0",
+  "description": "Backend API for Call Analysis System",
+  "main": "src/server.js",
+  "type": "module",
+  "scripts": {
+    "start": "cd backend && node src/server.js",
+    "front": "cd frontend && npm run dev",
+    "launch": "concurrently \"npm run start\" \"npm run front\""
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.55.0",
+    "bcryptjs": "^2.4.3",
+    "compression": "^1.7.4",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "express-rate-limit": "^7.1.5",
+    "express-slow-down": "^2.0.1",
+    "express-validator": "^7.0.1",
+    "helmet": "^7.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "morgan": "^1.10.0",
+    "nodemailer": "^6.9.7",
+    "socket.io": "^4.7.4",
+    "webrtc": "^1.14.1",
+    "winston": "^3.11.0",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "nodemon": "^3.0.2",
+    "supertest": "^6.3.3"
+  },
+  "keywords": [
+    "call-analysis",
+    "real-time",
+    "sentiment-analysis",
+    "api",
+    "postgresql"
+  ],
+  "author": "Call Analysis System Team",
+  "license": "MIT"
+}
