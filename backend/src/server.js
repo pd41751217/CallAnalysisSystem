@@ -41,24 +41,24 @@ const app = express();
 const server = createServer(app);
 
 // Create Socket.IO server
-// const io = new Server(server, {
-//   cors: {
-//     origin: [
-//       process.env.CORS_ORIGIN || "http://localhost:5173",
-//       "https://callanalysissystem.onrender.com",
-//       "https://callanalysissystem-frontend.onrender.com"
-//     ],
-//     methods: ["GET", "POST"],
-//     credentials: true
-//   }
-// });
 const io = new Server(server, {
   cors: {
-    origin: "*",
+    origin: [
+      process.env.CORS_ORIGIN || "http://localhost:5173",
+      "https://callanalysissystem.onrender.com",
+      "https://callanalysissystem-frontend.onrender.com"
+    ],
     methods: ["GET", "POST"],
-    credentials: false
+    credentials: true
   }
 });
+// const io = new Server(server, {
+//   cors: {
+//     origin: "*",
+//     methods: ["GET", "POST"],
+//     credentials: false
+//   }
+// });
 
 // Make io available to routes
 app.set('io', io);
