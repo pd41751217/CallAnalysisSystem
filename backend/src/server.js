@@ -114,18 +114,15 @@ const allowedOrigins = [
   "http://localhost:3000", 
   "https://callanalysissystem.onrender.com",
   "https://callanalysissystem-frontend.onrender.com",
-  "null"
+  "https://callanalysissystem-backend.onrender.com"
 ];
-
-// Filter out undefined values
-const validOrigins = allowedOrigins.filter(origin => origin && origin !== "null");
 
 app.use(cors({
   origin: function (origin, callback) {
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
     
-    if (validOrigins.indexOf(origin) !== -1) {
+    if (allowedOrigins.indexOf(origin) !== -1) {
       callback(null, true);
     } else {
       console.log('CORS blocked origin:', origin);
@@ -217,6 +214,17 @@ app.get('/health', (req, res) => {
     uptime: process.uptime(),
     environment: process.env.NODE_ENV
   });
+});
+
+// Robots.txt endpoint
+app.get('/robots.txt', (req, res) => {
+  res.type('text/plain');
+  res.send('User-agent: *\nDisallow: /api/\nAllow: /');
+});
+
+// Favicon endpoint
+app.get('/favicon.ico', (req, res) => {
+  res.status(204).end(); // No content
 });
 
 // Test API endpoint
