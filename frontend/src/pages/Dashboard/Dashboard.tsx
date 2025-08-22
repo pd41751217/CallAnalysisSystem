@@ -549,8 +549,88 @@ const Dashboard: React.FC = () => {
 
   if (loading) {
     return (
-      <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
-        <CircularProgress />
+      <Box 
+        sx={{ 
+          minHeight: '100vh',
+          background: 'linear-gradient(135deg, #faf5ff 0%, #f3e8ff 100%)',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'center',
+          alignItems: 'center',
+          position: 'relative',
+          overflow: 'hidden'
+        }}
+      >
+        {/* Decorative background elements */}
+        <Box
+          sx={{
+            position: 'absolute',
+            top: -100,
+            right: -100,
+            width: 300,
+            height: 300,
+            borderRadius: '50%',
+            background: 'linear-gradient(45deg, #e91e63, #9c27b0)',
+            opacity: 0.1,
+            animation: 'float 6s ease-in-out infinite'
+          }}
+        />
+        <Box
+          sx={{
+            position: 'absolute',
+            bottom: -150,
+            left: -150,
+            width: 400,
+            height: 400,
+            borderRadius: '50%',
+            background: 'linear-gradient(45deg, #9c27b0, #e91e63)',
+            opacity: 0.1,
+            animation: 'float 8s ease-in-out infinite 2s'
+          }}
+        />
+        
+        <Box position="relative" zIndex={1} textAlign="center">
+          <Box
+            sx={{
+              background: 'linear-gradient(135deg, #e91e63, #9c27b0)',
+              borderRadius: '50%',
+              p: 3,
+              mb: 3,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 8px 32px rgba(233, 30, 99, 0.3)',
+              animation: 'pulse 2s infinite'
+            }}
+          >
+            <PhoneIcon sx={{ fontSize: 60, color: 'white' }} />
+          </Box>
+          <Typography 
+            variant="h4" 
+            sx={{ 
+              fontWeight: 600,
+              background: 'linear-gradient(45deg, #e91e63, #9c27b0)',
+              backgroundClip: 'text',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              mb: 2
+            }}
+          >
+            Loading Dashboard
+          </Typography>
+          <Typography variant="body1" sx={{ color: '#4a5568', mb: 3 }}>
+            Preparing your call analysis workspace...
+          </Typography>
+          <CircularProgress 
+            size={60}
+            sx={{
+              color: '#e91e63',
+              '& .MuiCircularProgress-circle': {
+                strokeLinecap: 'round',
+              }
+            }}
+          />
+        </Box>
       </Box>
     );
   }
@@ -590,37 +670,39 @@ const Dashboard: React.FC = () => {
 
   return (
     <Box>
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-      <Typography variant="h4" gutterBottom>
-        Dashboard
-      </Typography>
-        <Chip
-          label={dashboardConnected ? 'Socket.IO Connected' : 'Socket.IO Disconnected'}
-          color={dashboardConnected ? 'success' : 'error'}
-          size="small"
-          icon={dashboardConnected ? <CircleIcon /> : <CircleIcon />}
-        />
-        <Chip
-          label={`Socket: ${socketConnected ? 'Connected' : 'Disconnected'}`}
-          color={socketConnected ? 'success' : 'error'}
-          size="small"
-          variant="outlined"
-        />
-
-      </Box>
 
       {/* Key Metrics */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} sm={6} md={2}>
-          <Card>
-            <CardContent>
+        <Grid item xs={12} sm={6} md={2.4}>
+          <Card sx={{
+            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            color: 'white',
+            position: 'relative',
+            overflow: 'hidden',
+            width: 190,
+            height: 110,
+            display: 'flex',
+            flexDirection: 'column'
+          }}>
+            <Box
+              sx={{
+                position: 'absolute',
+                top: -20,
+                right: -20,
+                width: 60,
+                height: 60,
+                borderRadius: '50%',
+                background: 'rgba(255, 255, 255, 0.1)'
+              }}
+            />
+            <CardContent sx={{ position: 'relative', zIndex: 1, flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
               <Box display="flex" alignItems="center">
-                <PeopleIcon color="primary" sx={{ fontSize: 40, mr: 2 }} />
+                <PeopleIcon sx={{ fontSize: 40, mr: 2, color: 'white' }} />
                 <Box>
-                  <Typography color="textSecondary" gutterBottom>
+                  <Typography sx={{ opacity: 0.9, mb: 1, fontWeight: 500 }}>
                     Total Users
                   </Typography>
-                  <Typography variant="h4">
+                                     <Typography variant="h3" sx={{ fontWeight: 700, textAlign: 'center' }}>
                     {metrics?.totalUsers || 0}
                   </Typography>
                 </Box>
@@ -629,16 +711,36 @@ const Dashboard: React.FC = () => {
           </Card>
         </Grid>
 
-        <Grid item xs={12} sm={6} md={2}>
-          <Card>
-            <CardContent>
+        <Grid item xs={12} sm={6} md={2.4}>
+          <Card sx={{
+            background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+            color: 'white',
+            position: 'relative',
+            overflow: 'hidden',
+            width: 190,
+            height: 110,
+            display: 'flex',
+            flexDirection: 'column'
+          }}>
+            <Box
+              sx={{
+                position: 'absolute',
+                top: -20,
+                right: -20,
+                width: 60,
+                height: 60,
+                borderRadius: '50%',
+                background: 'rgba(255, 255, 255, 0.1)'
+              }}
+            />
+            <CardContent sx={{ position: 'relative', zIndex: 1, flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
               <Box display="flex" alignItems="center">
-                <CircleIcon color="success" sx={{ fontSize: 40, mr: 2 }} />
+                <CircleIcon sx={{ fontSize: 40, mr: 2, color: 'white' }} />
                 <Box>
-                  <Typography color="textSecondary" gutterBottom>
+                  <Typography sx={{ opacity: 0.9, mb: 1, fontWeight: 500 }}>
                     Online
                   </Typography>
-                  <Typography variant="h4">
+                                     <Typography variant="h3" sx={{ fontWeight: 700, textAlign: 'center' }}>
                     {metrics?.onlineUsers || 0}
                   </Typography>
                 </Box>
@@ -647,16 +749,36 @@ const Dashboard: React.FC = () => {
           </Card>
         </Grid>
 
-        <Grid item xs={12} sm={6} md={2}>
-          <Card>
-            <CardContent>
+        <Grid item xs={12} sm={6} md={2.4}>
+          <Card sx={{
+            background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
+            color: 'white',
+            position: 'relative',
+            overflow: 'hidden',
+            width: 190,
+            height: 110,
+            display: 'flex',
+            flexDirection: 'column'
+          }}>
+            <Box
+              sx={{
+                position: 'absolute',
+                top: -20,
+                right: -20,
+                width: 60,
+                height: 60,
+                borderRadius: '50%',
+                background: 'rgba(255, 255, 255, 0.1)'
+              }}
+            />
+            <CardContent sx={{ position: 'relative', zIndex: 1, flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
               <Box display="flex" alignItems="center">
-                <CallIcon color="warning" sx={{ fontSize: 40, mr: 2 }} />
+                <CallIcon sx={{ fontSize: 40, mr: 2, color: 'white' }} />
                 <Box>
-                  <Typography color="textSecondary" gutterBottom>
+                  <Typography sx={{ opacity: 0.9, mb: 1, fontWeight: 500 }}>
                     Calling
                   </Typography>
-                  <Typography variant="h4">
+                                     <Typography variant="h3" sx={{ fontWeight: 700, textAlign: 'center' }}>
                     {metrics?.callingUsers || 0}
                   </Typography>
                 </Box>
@@ -665,16 +787,36 @@ const Dashboard: React.FC = () => {
           </Card>
         </Grid>
 
-        <Grid item xs={12} sm={6} md={2}>
-          <Card>
-            <CardContent>
+        <Grid item xs={12} sm={6} md={2.4}>
+          <Card sx={{
+            background: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)',
+            color: 'white',
+            position: 'relative',
+            overflow: 'hidden',
+            width: 190,
+            height: 110,
+            display: 'flex',
+            flexDirection: 'column'
+          }}>
+            <Box
+              sx={{
+                position: 'absolute',
+                top: -20,
+                right: -20,
+                width: 60,
+                height: 60,
+                borderRadius: '50%',
+                background: 'rgba(255, 255, 255, 0.1)'
+              }}
+            />
+            <CardContent sx={{ position: 'relative', zIndex: 1, flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
               <Box display="flex" alignItems="center">
-                <PhoneIcon color="primary" sx={{ fontSize: 40, mr: 2 }} />
+                <PhoneIcon sx={{ fontSize: 40, mr: 2, color: 'white' }} />
                 <Box>
-                  <Typography color="textSecondary" gutterBottom>
+                  <Typography sx={{ opacity: 0.9, mb: 1, fontWeight: 500 }}>
                     Live Calls
                   </Typography>
-                  <Typography variant="h4">
+                                     <Typography variant="h3" sx={{ fontWeight: 700, textAlign: 'center' }}>
                     {metrics?.liveCalls || 0}
                   </Typography>
                 </Box>
@@ -683,16 +825,36 @@ const Dashboard: React.FC = () => {
           </Card>
         </Grid>
 
-        <Grid item xs={12} sm={6} md={2}>
-          <Card>
-            <CardContent>
+        <Grid item xs={12} sm={6} md={2.4}>
+          <Card sx={{
+            background: 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',
+            color: 'white',
+            position: 'relative',
+            overflow: 'hidden',
+            width: 190,
+            height: 110,
+            display: 'flex',
+            flexDirection: 'column'
+          }}>
+            <Box
+              sx={{
+                position: 'absolute',
+                top: -20,
+                right: -20,
+                width: 60,
+                height: 60,
+                borderRadius: '50%',
+                background: 'rgba(255, 255, 255, 0.1)'
+              }}
+            />
+            <CardContent sx={{ position: 'relative', zIndex: 1, flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
               <Box display="flex" alignItems="center">
-                <ScheduleIcon color="error" sx={{ fontSize: 40, mr: 2 }} />
+                <ScheduleIcon sx={{ fontSize: 40, mr: 2, color: 'white' }} />
                 <Box>
-                  <Typography color="textSecondary" gutterBottom>
+                  <Typography sx={{ opacity: 0.9, mb: 1, fontWeight: 500 }}>
                     Offline
                   </Typography>
-                  <Typography variant="h4">
+                                     <Typography variant="h3" sx={{ fontWeight: 700, textAlign: 'center' }}>
                     {metrics?.offlineUsers || 0}
                   </Typography>
                 </Box>
@@ -837,12 +999,50 @@ const Dashboard: React.FC = () => {
         onClose={handleStopMonitoring}
         maxWidth="md"
         fullWidth
+        PaperProps={{
+          sx: {
+            background: 'linear-gradient(135deg, #faf5ff 0%, #f3e8ff 100%)',
+            borderRadius: 3,
+            boxShadow: '0 20px 60px rgba(233, 30, 99, 0.3)',
+            border: '1px solid rgba(233, 30, 99, 0.1)',
+          }
+        }}
       >
-        <DialogTitle>
-          <Box display="flex" alignItems="center" gap={1}>
-            <VolumeIcon color="primary" />
-            <Typography variant="h6">
-              Monitoring Active Call
+        <DialogTitle sx={{ 
+          background: 'linear-gradient(135deg, #e91e63 0%, #9c27b0 100%)',
+          color: 'white',
+          position: 'relative',
+          overflow: 'hidden'
+        }}>
+          {/* Decorative elements */}
+          <Box
+            sx={{
+              position: 'absolute',
+              top: -20,
+              right: -20,
+              width: 80,
+              height: 80,
+              borderRadius: '50%',
+              background: 'rgba(255, 255, 255, 0.1)',
+              animation: 'pulse 3s infinite'
+            }}
+          />
+          
+          <Box display="flex" alignItems="center" gap={2} position="relative" zIndex={1}>
+            <Box
+              sx={{
+                background: 'rgba(255, 255, 255, 0.2)',
+                borderRadius: '50%',
+                p: 1,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              <VolumeIcon sx={{ fontSize: 28, color: 'white' }} />
+            </Box>
+            <Typography variant="h5" sx={{ fontWeight: 600 }}>
+              Live Call Monitoring
             </Typography>
           </Box>
         </DialogTitle>
@@ -863,12 +1063,6 @@ const Dashboard: React.FC = () => {
                 <Typography variant="body2" color="textSecondary">
                   Status: {socketConnected ? 'Connected' : 'Disconnected'}
                 </Typography>
-                <Typography variant="body2" color="textSecondary">
-                   Audio: {socketConnected ? 'WebRTC Streaming' : 'Not available'}
-                </Typography>
-                <Typography variant="body2" color="textSecondary">
-                  Status: {audioStatus === 'playing' ? 'Playing' : audioStatus === 'error' ? 'Error' : 'Ready'}
-                </Typography>
                 {audioStatus === 'error' && (
                   <Typography variant="body2" color="error" mt={1}>
                     Audio playback error. Please check browser console for details.
@@ -877,15 +1071,11 @@ const Dashboard: React.FC = () => {
               </Box>
             )}
             
-            <Typography variant="body2" color="textSecondary" mt={2}>
-               WebRTC audio streams provide real-time, low-latency audio playback with native browser audio APIs for optimal performance.
-            </Typography>
-             
              {/* WebRTC Audio Players */}
              <Box mt={3}>
                <Typography variant="h6" gutterBottom>
                  Live Audio Streams
-               </Typography>
+            </Typography>
                
                <Box display="flex" gap={2} flexWrap="wrap">
                  {/* Microphone */}
@@ -895,8 +1085,8 @@ const Dashboard: React.FC = () => {
                        callId={monitoringCall}
                        audioType="mic"
                        autoPlay={true}
-                       onConnectionStateChange={(state) => console.log('Mic WebRTC state:', state)}
-                       onAudioLevelChange={(level) => console.log('Mic audio level:', level)}
+                      //  onConnectionStateChange={(state) => console.log('Mic WebRTC state:', state)}
+                      //  onAudioLevelChange={(level) => console.log('Mic audio level:', level)}
                      />
                    )}
                  </Box>
@@ -907,8 +1097,8 @@ const Dashboard: React.FC = () => {
                        callId={monitoringCall}
                        audioType="speaker"
                        autoPlay={true}
-                       onConnectionStateChange={(state) => console.log('Speaker WebRTC state:', state)}
-                       onAudioLevelChange={(level) => console.log('Speaker audio level:', level)}
+                      //  onConnectionStateChange={(state) => console.log('Speaker WebRTC state:', state)}
+                      //  onAudioLevelChange={(level) => console.log('Speaker audio level:', level)}
                      />
                    )}
                  </Box>

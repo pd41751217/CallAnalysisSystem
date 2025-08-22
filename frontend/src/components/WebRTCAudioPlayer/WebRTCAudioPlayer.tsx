@@ -1,5 +1,19 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useSocket } from '../../contexts/SocketContext';
+import {
+  Box,
+  Typography,
+  Chip,
+  IconButton,
+  Slider,
+  Button
+} from '@mui/material';
+import {
+  VolumeUp as VolumeUpIcon,
+  VolumeOff as VolumeOffIcon,
+  Refresh as RefreshIcon
+} from '@mui/icons-material';
+import { OpusDecoder } from 'opus-decoder';
 import './WebRTCAudioPlayer.css';
 
 interface WebRTCAudioPlayerProps {
@@ -24,6 +38,14 @@ const WebRTCAudioPlayer: React.FC<WebRTCAudioPlayerProps> = ({
   onConnectionStateChange,
   onAudioLevelChange
 }) => {
+  // Default audio level callback if none provided
+  const defaultAudioLevelCallback = useCallback((_level: number) => {
+    // Remove default logging for production
+    // console.log(`${audioType === 'speaker' ? 'Speaker' : 'Mic'} audio level: ${Math.round(level * 100)}`);
+  }, [audioType]);
+  
+  // Use provided callback or default
+  const audioLevelCallback = onAudioLevelChange || defaultAudioLevelCallback;
   const { socket } = useSocket();
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const audioElementRef = useRef<HTMLAudioElement | null>(null);
@@ -38,7 +60,32 @@ const WebRTCAudioPlayer: React.FC<WebRTCAudioPlayerProps> = ({
     audioLevel: 0
   });
   const [isMuted, setIsMuted] = useState(false);
-  const [volume, setVolume] = useState(1.0);
+  const [volume, setVolume] = useState(0.6); // Default volume to 60%
+  
+  // Opus decoder for handling compressed audio
+  const opusDecoderRef = useRef<OpusDecoder<48000> | null>(null);
+  
+  // Audio scheduling state - separate timing for mic and speaker
+  const nextPlayTimeRef = useRef<number>(0);
+  const isFirstAudioRef = useRef<boolean>(true);
+  const lastAudioTimeRef = useRef<number>(0);
+  
+  // Separate timing for mic and speaker to prevent interference
+  const micTimingRef = useRef<{ nextTime: number; isFirst: boolean }>({ nextTime: 0, isFirst: true });
+  const speakerTimingRef = useRef<{ nextTime: number; isFirst: boolean }>({ nextTime: 0, isFirst: true });
+  
+  // Function to reset audio timing
+  const resetAudioTiming = useCallback(() => {
+    nextPlayTimeRef.current = 0;
+    isFirstAudioRef.current = true;
+    lastAudioTimeRef.current = 0;
+    
+    // Reset separate timing for mic and speaker
+    micTimingRef.current = { nextTime: 0, isFirst: true };
+    speakerTimingRef.current = { nextTime: 0, isFirst: true };
+    
+    console.log('🎵 Audio timing reset for both mic and speaker');
+  }, []);
 
   // Initialize WebRTC connection
   const initializeWebRTC = useCallback(async () => {
@@ -88,9 +135,11 @@ const WebRTCAudioPlayer: React.FC<WebRTCAudioPlayerProps> = ({
         if (event.streams && event.streams[0]) {
           const stream = event.streams[0];
           
-          // Set up audio context for analysis
+          // Set up audio context for analysis with correct sample rate
           if (!audioContextRef.current) {
-            audioContextRef.current = new AudioContext();
+            audioContextRef.current = new AudioContext({
+              sampleRate: 48000 // Match Opus decoder sample rate
+            });
           }
           
           // Create analyser for audio level monitoring
@@ -165,7 +214,8 @@ const WebRTCAudioPlayer: React.FC<WebRTCAudioPlayerProps> = ({
         audioLevel: level
       }));
       
-      onAudioLevelChange?.(level);
+      // Call audio level callback (with default implementation)
+      audioLevelCallback(level);
       
       animationFrameRef.current = requestAnimationFrame(updateAudioLevel);
     };
@@ -202,10 +252,12 @@ const WebRTCAudioPlayer: React.FC<WebRTCAudioPlayerProps> = ({
   const initializeBase64AudioStreaming = useCallback(() => {
     console.log('🎵 Initializing base64 audio streaming fallback for:', callId, audioType);
     
-    // Set up audio context for base64 streaming
-    if (!audioContextRef.current) {
-      audioContextRef.current = new AudioContext();
-    }
+          // Set up audio context for base64 streaming with correct sample rate
+      if (!audioContextRef.current) {
+        audioContextRef.current = new AudioContext({
+          sampleRate: 48000 // Match Opus decoder sample rate
+        });
+      }
     
     // Create analyser for audio level monitoring
     analyserRef.current = audioContextRef.current.createAnalyser();
@@ -232,128 +284,173 @@ const WebRTCAudioPlayer: React.FC<WebRTCAudioPlayerProps> = ({
     onConnectionStateChange?.('connected');
   }, [callId, audioType, isMuted, volume, startAudioAnalysis, onConnectionStateChange]);
 
-  // Handle base64 audio data from backend
-  const handleBase64AudioData = useCallback((data: any) => {
-    if (data.callId === callId && data.audioType === audioType && audioContextRef.current) {
+  // Handle base64 audio data from backend (Opus-encoded)
+  const handleBase64AudioData = useCallback(async (data: any) => {
+    if (data.callId === callId && data.audioType === audioType && audioContextRef.current && opusDecoderRef.current) {
       try {
         // Log received data for debugging
-                          console.log('🎵 Received audio data:', {
-                    callId: data.callId,
-                    audioType: data.audioType,
-                    sampleRate: data.sampleRate,
-                    bitsPerSample: data.bitsPerSample,
-                    channels: data.channels,
-                    audioDataLength: data.audioData ? data.audioData.length : 0,
-                    firstBytes: data.audioData ? data.audioData.substring(0, 20) : 'none'
-                  });
+        console.log('🎵 Received Opus audio data:', {
+          callId: data.callId,
+          audioType: data.audioType,
+          sampleRate: data.sampleRate,
+          channels: data.channels,
+          audioDataLength: data.audioData ? data.audioData.length : 0
+        });
         
-        // Decode base64 audio data
+        // Decode base64 Opus data
         const audioData = atob(data.audioData);
-        const audioArray = new Uint8Array(audioData.length);
+        const opusArray = new Uint8Array(audioData.length);
         for (let i = 0; i < audioData.length; i++) {
-          audioArray[i] = audioData.charCodeAt(i);
+          opusArray[i] = audioData.charCodeAt(i);
         }
         
         // Get audio parameters
         const channels = data.channels || 1;
         const sampleRate = data.sampleRate || 48000;
-        const bitsPerSample = data.bitsPerSample || 16;
         
-        // Calculate correct buffer size (bytes per sample * channels)
-        const bytesPerSample = bitsPerSample / 8;
-        const samplesPerChannel = audioArray.length / (bytesPerSample * channels);
-        
-                          console.log('🎵 Processing audio:', {
-                    channels,
-                    sampleRate,
-                    bitsPerSample,
-                    audioDataLength: audioArray.length,
-                    samplesPerChannel,
-                    bytesPerSample,
-                    firstSamples: audioArray.slice(0, 8)
-                  });
-        
-        // Create audio buffer
-        const audioBuffer = audioContextRef.current.createBuffer(
+        console.log('🎵 Decoding Opus audio:', {
           channels,
-          samplesPerChannel,
-          sampleRate
-        );
+          sampleRate,
+          opusDataLength: opusArray.length
+        });
         
-        // Fill audio buffer with decoded data
-        for (let channel = 0; channel < channels; channel++) {
-          const channelData = audioBuffer.getChannelData(channel);
+        // Properly decode Opus data using the opus-decoder library
+        let audioBuffer: AudioBuffer;
+        
+        try {
+          // Use the opus-decoder library to decode the data
+          if (!opusDecoderRef.current) {
+            console.warn('⚠️ Opus decoder not initialized');
+            return;
+          }
+          const decodedData = opusDecoderRef.current.decodeFrame(opusArray);
           
-          for (let i = 0; i < samplesPerChannel; i++) {
-            const byteIndex = (i * channels + channel) * bytesPerSample;
+          if (!decodedData || decodedData.channelData.length === 0) {
+            console.warn('⚠️ No decoded data received from Opus decoder');
+            return;
+          }
+          
+          console.log('🎵 Opus decoded successfully:', {
+            numberOfChannels: decodedData.channelData.length,
+            samplesDecoded: decodedData.samplesDecoded,
+            sampleRate: decodedData.sampleRate,
+            errors: decodedData.errors.length
+          });
+          
+          // Create audio buffer from decoded data
+          audioBuffer = audioContextRef.current.createBuffer(
+            decodedData.channelData.length,
+            decodedData.samplesDecoded,
+            decodedData.sampleRate
+          );
+          
+          // Copy decoded data to audio buffer
+          for (let channel = 0; channel < decodedData.channelData.length; channel++) {
+            const channelData = audioBuffer.getChannelData(channel);
+            const decodedChannelData = decodedData.channelData[channel];
             
-            // Check bounds to prevent array access errors
-            if (byteIndex + bytesPerSample > audioArray.length) {
-              console.warn('⚠️ Audio data bounds exceeded, stopping processing');
-              break;
-            }
-            
-            if (bitsPerSample === 32) {
-              // Try both 32-bit integer and 32-bit float interpretations
-              const sampleInt = (audioArray[byteIndex] | 
-                               (audioArray[byteIndex + 1] << 8) | 
-                               (audioArray[byteIndex + 2] << 16) | 
-                               (audioArray[byteIndex + 3] << 24));
-              
-              // Create a DataView to read as 32-bit float
-              const buffer = new ArrayBuffer(4);
-              const view = new DataView(buffer);
-              view.setUint8(0, audioArray[byteIndex]);
-              view.setUint8(1, audioArray[byteIndex + 1]);
-              view.setUint8(2, audioArray[byteIndex + 2]);
-              view.setUint8(3, audioArray[byteIndex + 3]);
-              const sampleFloat = view.getFloat32(0, true); // true = little-endian
-              
-              // Use float interpretation (more common for 32-bit audio)
-              channelData[i] = sampleFloat;
-              
-              // Debug first few samples (only for first audio chunk)
-              if (i < 3 && Math.random() < 0.01) {
-                console.log(`🎵 Sample ${i}: int=${sampleInt}, float=${sampleFloat}, normalized=${channelData[i]}`);
-              }
-            } else if (bitsPerSample === 16) {
-              // 16-bit signed integer (little-endian)
-              const sample = (audioArray[byteIndex] | (audioArray[byteIndex + 1] << 8));
-              channelData[i] = sample >= 0x8000 ? (sample - 0x10000) / 32768.0 : sample / 32768.0;
-            } else if (bitsPerSample === 8) {
-              // 8-bit unsigned integer
-              channelData[i] = (audioArray[byteIndex] - 128) / 128.0;
-            } else {
-              // Default to 16-bit
-              const sample = (audioArray[byteIndex] | (audioArray[byteIndex + 1] << 8));
-              channelData[i] = sample >= 0x8000 ? (sample - 0x10000) / 32768.0 : sample / 32768.0;
+            for (let i = 0; i < decodedData.samplesDecoded; i++) {
+              channelData[i] = decodedChannelData[i];
             }
           }
+          
+          console.log('🎵 Audio buffer created from Opus data:', {
+            channels: audioBuffer.numberOfChannels,
+            length: audioBuffer.length,
+            sampleRate: audioBuffer.sampleRate,
+            duration: audioBuffer.duration
+          });
+        } catch (error) {
+          console.error('❌ Opus decoding failed:', error);
+          return;
         }
         
-                          // Create and play audio source
-                  const source = audioContextRef.current.createBufferSource();
-                  source.buffer = audioBuffer;
-                  
-                  // Add volume control to reduce high volume
-                  const gainNode = audioContextRef.current.createGain();
-                  gainNode.gain.value = 0.5; // Increase volume back to 50%
-                  
-                  source.connect(gainNode);
-                  gainNode.connect(analyserRef.current!);
+        // Create and play audio source with simplified processing
+        const source = audioContextRef.current.createBufferSource();
+        source.buffer = audioBuffer;
+        
+        // Create a simple gain node for volume control
+        const gainNode = audioContextRef.current.createGain();
+        gainNode.gain.value = volume;
+        
+        // Connect directly to destination for now (simplified)
+        source.connect(gainNode);
+        gainNode.connect(audioContextRef.current!.destination);
+        
+        // Also connect to analyser for level monitoring
+        gainNode.connect(analyserRef.current!);
+        
+        console.log('🎵 Audio processing chain connected:', {
+          audioContextState: audioContextRef.current.state,
+          sampleRate: audioContextRef.current.sampleRate,
+          destinationConnected: true
+        });
         
         // Add completion handler for audio playback
         source.onended = () => {
-          console.log('🎵 Audio buffer finished playing');
+          console.log(`🎵 ${audioType} audio buffer finished playing`);
         };
         
-        source.start();
+        // Schedule audio to play at the correct time
+        const currentTime = audioContextRef.current.currentTime;
+        const bufferDuration = audioBuffer.duration; // Should be 0.01 seconds (10ms)
         
-        console.log('🎵 Audio buffer started playing:', {
+        // Use separate timing for mic and speaker
+        const timingRef = audioType === 'mic' ? micTimingRef : speakerTimingRef;
+        
+        // For the first audio buffer of this type, start immediately
+        if (timingRef.current.isFirst) {
+          timingRef.current.nextTime = currentTime;
+          timingRef.current.isFirst = false;
+          console.log(`🎵 First ${audioType} audio buffer - starting immediately at:`, timingRef.current.nextTime);
+        }
+        
+        // Simple timing: just ensure we don't schedule in the past
+        if (timingRef.current.nextTime < currentTime) {
+          timingRef.current.nextTime = currentTime;
+        }
+        
+        // CRITICAL: Check if audio context is closed and recreate if needed
+        if (audioContextRef.current.state === 'closed') {
+          console.log('🎵 Audio context is closed, creating new one');
+          audioContextRef.current = new AudioContext({
+            sampleRate: 48000
+          });
+          
+          // Recreate analyser and gain node
+          analyserRef.current = audioContextRef.current.createAnalyser();
+          analyserRef.current.fftSize = 256;
+          
+          gainNodeRef.current = audioContextRef.current.createGain();
+          gainNodeRef.current.gain.value = isMuted ? 0 : volume;
+          
+          // Reconnect nodes
+          analyserRef.current.connect(gainNodeRef.current);
+          gainNodeRef.current.connect(audioContextRef.current.destination);
+        }
+        
+        // Ensure audio context is running
+        if (audioContextRef.current.state === 'suspended') {
+          console.log('🎵 Audio context suspended, resuming...');
+          await audioContextRef.current.resume();
+        }
+        
+        // Schedule this buffer to play at the next scheduled time
+        source.start(timingRef.current.nextTime);
+        
+        // Update the next play time for the next buffer
+        timingRef.current.nextTime += bufferDuration;
+        
+        console.log('🎵 Audio buffer scheduled:', {
+          audioType: audioType,
           duration: audioBuffer.duration,
           sampleRate: audioBuffer.sampleRate,
           numberOfChannels: audioBuffer.numberOfChannels,
-          format: `${bitsPerSample}-bit ${channels > 1 ? 'stereo' : 'mono'}`
+          format: `Opus-encoded ${channels > 1 ? 'stereo' : 'mono'}`,
+          scheduledTime: timingRef.current.nextTime,
+          currentTime: currentTime,
+          bufferDuration: bufferDuration,
+          timingOffset: timingRef.current.nextTime - currentTime
         });
         
       } catch (error) {
@@ -419,7 +516,87 @@ const WebRTCAudioPlayer: React.FC<WebRTCAudioPlayerProps> = ({
   // Initialize WebRTC when component mounts
   useEffect(() => {
     if (socket && callId) {
-      // Set up socket event listeners
+              // Initialize Opus decoder
+        const initOpusDecoder = async () => {
+          try {
+            opusDecoderRef.current = new OpusDecoder({
+              sampleRate: 48000 as const,
+              channels: 1,
+              forceStereo: false
+            });
+            await opusDecoderRef.current.ready;
+            console.log('🎵 Opus decoder initialized for:', audioType);
+          } catch (error) {
+            console.error('❌ Failed to initialize Opus decoder:', error);
+          }
+        };
+      
+              initOpusDecoder();
+        
+        // Add click handler to resume audio context on user interaction
+        const handleUserInteraction = async () => {
+          if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+            console.log('🎵 User interaction detected, resuming audio context');
+            await audioContextRef.current.resume();
+          }
+          // Remove the event listeners after first interaction
+          document.removeEventListener('click', handleUserInteraction);
+          document.removeEventListener('keydown', handleUserInteraction);
+        };
+        
+        // Add event listeners for user interaction
+        document.addEventListener('click', handleUserInteraction);
+        document.addEventListener('keydown', handleUserInteraction);
+        
+        // Test audio context with a simple tone
+        const testAudioContext = async () => {
+          try {
+            if (!audioContextRef.current) {
+              audioContextRef.current = new AudioContext({
+                sampleRate: 48000
+              });
+            }
+            
+            // Resume audio context if suspended
+            if (audioContextRef.current.state === 'suspended') {
+              await audioContextRef.current.resume();
+            }
+            
+            console.log('🎵 Audio context state:', audioContextRef.current.state);
+            
+            // Only play test tone if context is running
+            if (audioContextRef.current.state === 'running') {
+              // Create a simple test tone to verify audio is working
+              const testBuffer = audioContextRef.current.createBuffer(1, 480, 48000);
+              const testData = testBuffer.getChannelData(0);
+              
+              // Generate a 440 Hz sine wave for 10ms
+              for (let i = 0; i < 480; i++) {
+                const time = i / 48000;
+                testData[i] = 0.3 * Math.sin(2 * Math.PI * 440 * time); // Louder test tone
+              }
+              
+              const testSource = audioContextRef.current.createBufferSource();
+              testSource.buffer = testBuffer;
+              testSource.connect(audioContextRef.current.destination);
+              
+              console.log('🎵 Playing test tone to verify audio context...');
+              testSource.start();
+              testSource.onended = () => {
+                console.log('🎵 Test tone finished - audio context is working');
+              };
+            } else {
+              console.warn('⚠️ Audio context not running, cannot play test tone');
+            }
+            
+          } catch (error) {
+            console.error('❌ Audio context test failed:', error);
+          }
+        };
+        
+        testAudioContext();
+        
+        // Set up socket event listeners
       socket.on('webrtc_answer', handleWebRTCAnswer);
       socket.on('ice_candidate', handleIceCandidate);
       socket.on('connection_state_change', handleConnectionStateChange);
@@ -436,6 +613,10 @@ const WebRTCAudioPlayer: React.FC<WebRTCAudioPlayerProps> = ({
         socket.off('connection_state_change', handleConnectionStateChange);
         socket.off('webrtc_error', handleWebRTCError);
         socket.off('call_audio_' + callId, handleBase64AudioData);
+        
+        // Clean up event listeners
+        document.removeEventListener('click', handleUserInteraction);
+        document.removeEventListener('keydown', handleUserInteraction);
       };
     }
   }, [socket, callId, handleWebRTCAnswer, handleIceCandidate, handleConnectionStateChange, handleWebRTCError, handleBase64AudioData, initializeWebRTC]);
@@ -465,48 +646,158 @@ const WebRTCAudioPlayer: React.FC<WebRTCAudioPlayerProps> = ({
   }, [isMuted, volume]);
 
   return (
-    <div className="webrtc-audio-player">
-      <div className="audio-level">
-        <div className="level-bar">
-          <div 
-            className="level-fill" 
-            style={{ 
-              width: `${connectionState.audioLevel * 100}%`,
-              backgroundColor: connectionState.connected ? '#4CAF50' : '#f44336'
+    <Box
+      sx={{
+        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        borderRadius: 3,
+        p: 3,
+        color: 'white',
+        position: 'relative',
+        overflow: 'hidden',
+        boxShadow: '0 8px 32px rgba(102, 126, 234, 0.3)',
+        transition: 'all 0.3s ease',
+        '&:hover': {
+          transform: 'translateY(-2px)',
+          boxShadow: '0 12px 40px rgba(102, 126, 234, 0.4)',
+        }
+      }}
+    >
+      {/* Decorative background elements */}
+      <Box
+        sx={{
+          position: 'absolute',
+          top: -30,
+          right: -30,
+          width: 80,
+          height: 80,
+          borderRadius: '50%',
+          background: 'rgba(255, 255, 255, 0.1)',
+          animation: 'pulse 3s infinite'
+        }}
+      />
+      
+      <Box position="relative" zIndex={1}>
+        {/* Header */}
+        <Box display="flex" alignItems="center" mb={2}>
+          <VolumeUpIcon sx={{ fontSize: 28, mr: 1 }} />
+          <Typography variant="h6" sx={{ fontWeight: 600 }}>
+            {audioType === 'mic' ? 'Microphone' : 'Speaker'} Audio
+          </Typography>
+          <Chip
+            label={connectionState.connected ? 'Connected' : 'Disconnected'}
+            size="small"
+            sx={{
+              ml: 'auto',
+              background: connectionState.connected ? 'rgba(76, 175, 80, 0.9)' : 'rgba(244, 67, 54, 0.9)',
+              color: 'white',
+              fontWeight: 600
             }}
           />
-        </div>
-      </div>
+        </Box>
 
-      <div className="audio-controls">
-        <button 
-          className={`mute-button ${isMuted ? 'muted' : ''}`}
-          onClick={handleMuteToggle}
-          disabled={!connectionState.connected}
-        >
-          {isMuted ? '🔇' : '🔊'}
-        </button>
-        
-        <div className="volume-control">
-          <input
-            type="range"
-            min="0"
-            max="1"
-            step="0.01"
-            value={volume}
-            onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
-            disabled={isMuted || !connectionState.connected}
-            className="volume-slider"
-          />
-        </div>
-      </div>
+        {/* Audio Level Visualization */}
+        <Box mb={3}>
+          <Box display="flex" justifyContent="space-between" mb={1}>
+            <Typography variant="body2" sx={{ opacity: 0.9 }}>
+              Audio Level
+            </Typography>
+            <Typography variant="body2" sx={{ opacity: 0.9 }}>
+              {Math.round(connectionState.audioLevel * 100)}%
+            </Typography>
+          </Box>
+          <Box
+            sx={{
+              width: '100%',
+              height: 8,
+              background: 'rgba(255, 255, 255, 0.2)',
+              borderRadius: 4,
+              overflow: 'hidden',
+              position: 'relative'
+            }}
+          >
+            <Box
+              sx={{
+                width: `${connectionState.audioLevel * 100}%`,
+                height: '100%',
+                background: connectionState.connected 
+                  ? 'linear-gradient(90deg, #4CAF50, #8BC34A)' 
+                  : 'linear-gradient(90deg, #f44336, #ff5722)',
+                borderRadius: 4,
+                transition: 'width 0.3s ease',
+                boxShadow: '0 0 10px rgba(76, 175, 80, 0.5)'
+              }}
+            />
+          </Box>
+        </Box>
+
+        {/* Controls */}
+        <Box display="flex" alignItems="center" gap={2}>
+          <IconButton
+            onClick={handleMuteToggle}
+            disabled={!connectionState.connected}
+            sx={{
+              background: isMuted ? 'rgba(244, 67, 54, 0.2)' : 'rgba(255, 255, 255, 0.2)',
+              color: 'white',
+              '&:hover': {
+                background: isMuted ? 'rgba(244, 67, 54, 0.3)' : 'rgba(255, 255, 255, 0.3)',
+              }
+            }}
+          >
+            {isMuted ? <VolumeOffIcon /> : <VolumeUpIcon />}
+          </IconButton>
+          
+          <IconButton
+            onClick={resetAudioTiming}
+            disabled={!connectionState.connected}
+            sx={{
+              background: 'rgba(255, 255, 255, 0.2)',
+              color: 'white',
+              '&:hover': {
+                background: 'rgba(255, 255, 255, 0.3)',
+              }
+            }}
+            title="Reset Audio Timing"
+          >
+            <RefreshIcon />
+          </IconButton>
+          
+          <Box flex={1}>
+            <Box display="flex" justifyContent="space-between" mb={1}>
+              <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                Volume
+              </Typography>
+              <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                {Math.round(volume * 100)}%
+              </Typography>
+            </Box>
+            <Slider
+              value={volume}
+              onChange={(_, value) => handleVolumeChange(value as number)}
+              disabled={isMuted || !connectionState.connected}
+              sx={{
+                color: 'white',
+                '& .MuiSlider-track': {
+                  background: 'linear-gradient(90deg, #4CAF50, #8BC34A)',
+                },
+                '& .MuiSlider-thumb': {
+                  background: 'white',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+                },
+                '& .MuiSlider-rail': {
+                  background: 'rgba(255, 255, 255, 0.3)',
+                }
+              }}
+            />
+          </Box>
+        </Box>
+      </Box>
 
       <audio
         ref={audioElementRef}
         autoPlay={autoPlay}
         style={{ display: 'none' }}
       />
-    </div>
+    </Box>
   );
 };
 

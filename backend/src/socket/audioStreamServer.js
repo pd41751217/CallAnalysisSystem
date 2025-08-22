@@ -28,7 +28,7 @@ class AudioStreamServer {
       // Store client info
       this.clients.set(socket.id, {
         socket,
-        callId: null,
+      callId: null,
         type: 'monitor' // or 'streamer'
       });
 
@@ -78,8 +78,8 @@ class AudioStreamServer {
     const client = this.clients.get(clientId);
     if (!client) {
       logger.warn(`Unknown client ${clientId} sent audio data`);
-      return;
-    }
+        return;
+      }
 
     logger.debug(`Received audio data from ${clientId}: ${data.audioType}, size: ${data.audioData ? data.audioData.length : 0}`);
 
@@ -122,8 +122,8 @@ class AudioStreamServer {
     this.io.to(`call_monitoring_${callId}`).emit(`call_audio_${callId}`, audioData);
     
     // Also broadcast to general audio stream room
-    this.io.to('audio_stream').emit('audio_data', audioData);
-    
+      this.io.to('audio_stream').emit('audio_data', audioData);
+      
     logger.debug(`Broadcasted audio data for call ${callId}: ${audioData.audioType}, size: ${audioData.audioData ? audioData.audioData.length : 0}`);
   }
 

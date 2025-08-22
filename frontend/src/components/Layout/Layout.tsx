@@ -72,14 +72,61 @@ const Layout: React.FC = () => {
   };
 
   const drawer = (
-    <Box>
-      <Box sx={{ p: 2, display: 'flex', alignItems: 'center', gap: 2 }}>
-        <PhoneIcon color="primary" sx={{ fontSize: 32 }} />
-        <Typography variant="h6" noWrap component="div">
+    <Box sx={{ height: '100%', background: 'linear-gradient(180deg, #faf5ff 0%, #f3e8ff 100%)' }}>
+      <Box 
+        sx={{ 
+          p: 3, 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: 2,
+          background: 'linear-gradient(135deg, #e91e63 0%, #9c27b0 100%)',
+          color: 'white',
+          position: 'relative',
+          overflow: 'hidden'
+        }}
+      >
+        {/* Decorative elements */}
+        <Box
+          sx={{
+            position: 'absolute',
+            top: -20,
+            right: -20,
+            width: 60,
+            height: 60,
+            borderRadius: '50%',
+            background: 'rgba(255, 255, 255, 0.1)',
+            animation: 'pulse 3s infinite'
+          }}
+        />
+        
+        <Box
+          sx={{
+            background: 'rgba(255, 255, 255, 0.2)',
+            borderRadius: '50%',
+            p: 1,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}
+        >
+          <PhoneIcon sx={{ fontSize: 32, color: 'white' }} />
+        </Box>
+        <Typography 
+          variant="h6" 
+          noWrap 
+          component="div"
+          sx={{ 
+            fontWeight: 600,
+            background: 'rgba(255, 255, 255, 0.9)',
+            backgroundClip: 'text',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent'
+          }}
+        >
           Call Analysis
         </Typography>
       </Box>
-      <Divider />
+      <Divider sx={{ borderColor: 'rgba(233, 30, 99, 0.1)' }} />
       <List>
         {menuItems.map((item) => (
           <ListItem key={item.text} disablePadding>
@@ -87,15 +134,32 @@ const Layout: React.FC = () => {
               selected={location.pathname === item.path}
               onClick={() => navigate(item.path)}
               sx={{
+                mx: 1,
+                borderRadius: 2,
+                mb: 0.5,
+                transition: 'all 0.3s ease',
                 '&.Mui-selected': {
-                  backgroundColor: 'primary.light',
+                  background: 'linear-gradient(135deg, #e91e63, #9c27b0)',
+                  color: 'white',
+                  boxShadow: '0 4px 15px rgba(233, 30, 99, 0.3)',
                   '&:hover': {
-                    backgroundColor: 'primary.light',
+                    background: 'linear-gradient(135deg, #e91e63, #9c27b0)',
+                    transform: 'translateX(5px)',
                   },
+                  '& .MuiListItemIcon-root': {
+                    color: 'white',
+                  },
+                },
+                '&:hover': {
+                  background: 'rgba(233, 30, 99, 0.1)',
+                  transform: 'translateX(5px)',
                 },
               }}
             >
-              <ListItemIcon sx={{ color: location.pathname === item.path ? 'primary.main' : 'inherit' }}>
+              <ListItemIcon sx={{ 
+                color: location.pathname === item.path ? 'white' : '#4a5568',
+                transition: 'color 0.3s ease'
+              }}>
                 {item.icon}
               </ListItemIcon>
               <ListItemText primary={item.text} />
@@ -113,19 +177,39 @@ const Layout: React.FC = () => {
         sx={{
           width: { sm: `calc(100% - ${drawerWidth}px)` },
           ml: { sm: `${drawerWidth}px` },
+          background: 'rgba(255, 255, 255, 0.95)',
+          backdropFilter: 'blur(10px)',
+          borderBottom: '1px solid rgba(233, 30, 99, 0.1)',
+          boxShadow: '0 4px 20px rgba(233, 30, 99, 0.1)',
         }}
       >
         <Toolbar>
           <IconButton
-            color="inherit"
+            color="primary"
             aria-label="open drawer"
             edge="start"
             onClick={handleDrawerToggle}
-            sx={{ mr: 2, display: { sm: 'none' } }}
+            sx={{ 
+              mr: 2, 
+              display: { sm: 'none' },
+              background: 'rgba(233, 30, 99, 0.1)',
+              '&:hover': {
+                background: 'rgba(233, 30, 99, 0.2)',
+              }
+            }}
           >
             <MenuIcon />
           </IconButton>
-          <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
+          <Typography 
+            variant="h6" 
+            noWrap 
+            component="div" 
+            sx={{ 
+              flexGrow: 1,
+              fontWeight: 600,
+              color: '#2d3748'
+            }}
+          >
             {menuItems.find(item => item.path === location.pathname)?.text || 'Call Analysis System'}
           </Typography>
           
@@ -135,9 +219,22 @@ const Layout: React.FC = () => {
               color={isConnected ? 'success' : 'error'}
               size="small"
               variant="outlined"
+              sx={{
+                borderColor: isConnected ? 'rgba(76, 175, 80, 0.5)' : 'rgba(244, 67, 54, 0.5)',
+                color: isConnected ? '#4caf50' : '#f44336',
+                fontWeight: 600
+              }}
             />
             
-            <IconButton color="inherit">
+            <IconButton 
+              sx={{
+                background: 'rgba(233, 30, 99, 0.1)',
+                color: '#e91e63',
+                '&:hover': {
+                  background: 'rgba(233, 30, 99, 0.2)',
+                }
+              }}
+            >
               <Badge badgeContent={4} color="error">
                 <NotificationsIcon />
               </Badge>
@@ -145,9 +242,21 @@ const Layout: React.FC = () => {
             
             <IconButton
               onClick={handleProfileMenuOpen}
-              color="inherit"
+              sx={{
+                background: 'linear-gradient(135deg, #e91e63, #9c27b0)',
+                color: 'white',
+                '&:hover': {
+                  background: 'linear-gradient(135deg, #c2185b, #7b1fa2)',
+                }
+              }}
             >
-              <Avatar sx={{ width: 32, height: 32 }}>
+              <Avatar sx={{ 
+                width: 32, 
+                height: 32,
+                background: 'transparent',
+                color: 'white',
+                fontWeight: 600
+              }}>
                 {user?.name?.charAt(0) || 'U'}
               </Avatar>
             </IconButton>

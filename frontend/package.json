@@ -4,14 +4,11 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "node server.js",
+    "dev": "vite",
     "build": "tsc -b && vite build",
-    "deploy": "serve -d dist",
     "lint": "eslint .",
     "preview": "vite preview",
-    "start": "node server.js",
-    "start:serve": "npx serve -s dist -l $PORT",
-    "dev:vite": "vite --host 0.0.0.0"
+    "deploy": "serve -d dist"
   },
   "dependencies": {
     "@emotion/react": "^11.11.1",
@@ -23,6 +20,7 @@
     "axios": "^1.11.0",
     "date-fns": "^2.30.0",
     "express": "^4.18.2",
+    "opus-decoder": "^0.7.10",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.20.1",

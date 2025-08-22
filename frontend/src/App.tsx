@@ -20,15 +20,15 @@ const theme = createTheme({
   palette: {
     mode: 'light',
     primary: {
-      main: '#1976d2',
-      light: '#42a5f5',
-      dark: '#1565c0',
+      main: '#e91e63', // Romantic pink
+      light: '#ff5983',
+      dark: '#c2185b',
       contrastText: '#fff',
     },
     secondary: {
-      main: '#dc004e',
-      light: '#ff5983',
-      dark: '#9a0036',
+      main: '#9c27b0', // Romantic purple
+      light: '#ba68c8',
+      dark: '#7b1fa2',
       contrastText: '#fff',
     },
     success: {
@@ -56,16 +56,72 @@ const theme = createTheme({
       contrastText: '#fff',
     },
     background: {
-      default: '#f5f5f5',
+      default: '#faf5ff', // Soft lavender background
       paper: '#fff',
     },
     text: {
-      primary: 'rgba(0, 0, 0, 0.87)',
-      secondary: 'rgba(0, 0, 0, 0.6)',
+      primary: '#2d3748',
+      secondary: '#718096',
     },
   },
   typography: {
-    fontFamily: '"Roboto", "Helvetica", "Arial", sans-serif',
+    fontFamily: '"Poppins", "Roboto", "Helvetica", "Arial", sans-serif',
+    h1: {
+      fontWeight: 600,
+      background: 'linear-gradient(45deg, #e91e63, #9c27b0)',
+      backgroundClip: 'text',
+      WebkitBackgroundClip: 'text',
+      WebkitTextFillColor: 'transparent',
+    },
+    h2: {
+      fontWeight: 600,
+      color: '#2d3748',
+    },
+    h3: {
+      fontWeight: 500,
+      color: '#4a5568',
+    },
+  },
+  shape: {
+    borderRadius: 16,
+  },
+  components: {
+    MuiCard: {
+      styleOverrides: {
+        root: {
+          boxShadow: '0 4px 20px rgba(233, 30, 99, 0.1)',
+          border: '1px solid rgba(233, 30, 99, 0.1)',
+          transition: 'all 0.3s ease',
+          '&:hover': {
+            boxShadow: '0 8px 30px rgba(233, 30, 99, 0.2)',
+            transform: 'translateY(-2px)',
+          },
+        },
+      },
+    },
+    MuiButton: {
+      styleOverrides: {
+        root: {
+          borderRadius: 25,
+          textTransform: 'none',
+          fontWeight: 600,
+          boxShadow: '0 4px 15px rgba(233, 30, 99, 0.3)',
+          transition: 'all 0.3s ease',
+          '&:hover': {
+            transform: 'translateY(-2px)',
+            boxShadow: '0 6px 20px rgba(233, 30, 99, 0.4)',
+          },
+        },
+      },
+    },
+    MuiChip: {
+      styleOverrides: {
+        root: {
+          borderRadius: 20,
+          fontWeight: 500,
+        },
+      },
+    },
   },
 });
 

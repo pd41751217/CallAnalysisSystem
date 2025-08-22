@@ -47,36 +47,116 @@ const Login: React.FC = () => {
   };
 
   return (
-    <Container component="main" maxWidth="sm">
+    <Box
+      sx={{
+        minHeight: '100vh',
+        background: 'linear-gradient(135deg, #faf5ff 0%, #f3e8ff 50%, #e9d5ff 100%)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        position: 'relative',
+        overflow: 'hidden'
+      }}
+    >
+      {/* Decorative background elements */}
       <Box
         sx={{
-          minHeight: '100vh',
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'center',
-          alignItems: 'center',
+          position: 'absolute',
+          top: -100,
+          right: -100,
+          width: 300,
+          height: 300,
+          borderRadius: '50%',
+          background: 'linear-gradient(45deg, #e91e63, #9c27b0)',
+          opacity: 0.1,
+          animation: 'float 6s ease-in-out infinite'
         }}
-      >
+      />
+      <Box
+        sx={{
+          position: 'absolute',
+          bottom: -150,
+          left: -150,
+          width: 400,
+          height: 400,
+          borderRadius: '50%',
+          background: 'linear-gradient(45deg, #9c27b0, #e91e63)',
+          opacity: 0.1,
+          animation: 'float 8s ease-in-out infinite 2s'
+        }}
+      />
+      
+      <Container component="main" maxWidth="sm" sx={{ position: 'relative', zIndex: 1 }}>
         <Paper
-          elevation={3}
+          elevation={0}
           sx={{
-            p: 4,
+            p: 6,
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
             width: '100%',
-            maxWidth: 400,
+            maxWidth: 450,
+            background: 'rgba(255, 255, 255, 0.95)',
+            backdropFilter: 'blur(10px)',
+            borderRadius: 4,
+            boxShadow: '0 20px 60px rgba(233, 30, 99, 0.2)',
+            border: '1px solid rgba(233, 30, 99, 0.1)',
+            position: 'relative',
+            overflow: 'hidden'
           }}
         >
-          <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-            <Phone color="primary" sx={{ fontSize: 40, mr: 2 }} />
-            <Typography component="h1" variant="h4" color="primary">
+          {/* Decorative header */}
+          <Box
+            sx={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              height: 4,
+              background: 'linear-gradient(90deg, #e91e63, #9c27b0, #e91e63)',
+              backgroundSize: '200% 100%',
+              animation: 'shimmer 3s infinite'
+            }}
+          />
+          
+          <Box sx={{ display: 'flex', alignItems: 'center', mb: 4 }}>
+            <Box
+              sx={{
+                background: 'linear-gradient(135deg, #e91e63, #9c27b0)',
+                borderRadius: '50%',
+                p: 2,
+                mr: 2,
+                boxShadow: '0 8px 25px rgba(233, 30, 99, 0.3)'
+              }}
+            >
+              <Phone sx={{ fontSize: 40, color: 'white' }} />
+            </Box>
+            <Typography 
+              component="h1" 
+              variant="h3" 
+              sx={{ 
+                fontWeight: 700,
+                background: 'linear-gradient(45deg, #e91e63, #9c27b0)',
+                backgroundClip: 'text',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent'
+              }}
+            >
               Call Analysis
             </Typography>
           </Box>
           
-          <Typography component="h2" variant="h5" sx={{ mb: 3 }}>
-            Sign in to your account
+          <Typography 
+            component="h2" 
+            variant="h5" 
+            sx={{ 
+              mb: 4, 
+              color: '#4a5568',
+              fontWeight: 400,
+              textAlign: 'center'
+            }}
+          >
+            Welcome back! Sign in to your account
           </Typography>
 
           {error && (
@@ -151,8 +231,8 @@ const Login: React.FC = () => {
             </Box>
           </Box>
         </Paper>
-      </Box>
-    </Container>
+      </Container>
+    </Box>
   );
 };
 

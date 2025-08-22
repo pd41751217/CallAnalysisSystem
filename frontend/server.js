@@ -39,6 +39,5 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Frontend server running on http://0.0.0.0:${PORT}`);
   console.log(`📱 Accessible from network at http://YOUR_IP:${PORT}`);
   console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`📁 Serving from: ${path.join(__dirname, 'dist')}`);
 });
-
-export default app;
