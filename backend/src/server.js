@@ -45,6 +45,8 @@ const io = new Server(server, {
   cors: {
     origin: [
       process.env.CORS_ORIGIN || "http://localhost:5173",
+      "http://localhost:3000",
+      "https://callanalysissystem.onrender.com",
       "https://callanalysissystem.onrender.com",
       "https://callanalysissystem-frontend.onrender.com"
     ],

@@ -6,7 +6,6 @@ import {
   Chip,
   IconButton,
   Slider,
-  Button
 } from '@mui/material';
 import {
   VolumeUp as VolumeUpIcon,
