@@ -38,7 +38,7 @@ export const userManagementService = {
   // Get all users
   getUsers: async (): Promise<User[]> => {
     const response = await api.get('/users');
-    return response.data;
+    return response.data.users || response.data;
   },
 
   // Get all teams

@@ -190,6 +190,7 @@ export class User {
   // Helper method to get all users with team information
   static async findAllWithTeams(options = {}) {
     try {
+      // First, get all users without team join to avoid relationship issues
       const users = await this.findAll(options);
       
       // Get team information for users with team_id
@@ -217,7 +218,9 @@ export class User {
 
       return users;
     } catch (error) {
-      throw error;
+      // If there's still an error, try to get users without team information
+      console.warn('Error fetching users with teams, falling back to basic user fetch:', error.message);
+      return await this.findAll(options);
     }
   }
 }

@@ -15,6 +15,7 @@ import LiveCallAnalysis from './pages/LiveCallAnalysis/LiveCallAnalysis';
 import OverviewDashboard from './pages/OverviewDashboard/OverviewDashboard';
 import CallAuditReport from './pages/CallAuditReport/CallAuditReport';
 import CallDetails from './pages/CallDetails/CallDetails';
+import CallingRuleManagement from './pages/CallingRuleManagement/CallingRuleManagement';
 
 const theme = createTheme({
   palette: {
@@ -169,6 +170,7 @@ function App() {
                 <Route path="user-management" element={<UserManagement />} />
                 <Route path="live-analysis" element={<LiveCallAnalysis />} />
                 <Route path="overview" element={<OverviewDashboard />} />
+                <Route path="calling-rules" element={<CallingRuleManagement />} />
                 <Route path="call-audit/:callId" element={<CallAuditReport />} />
                 <Route path="call-details/:callId" element={<CallDetails />} />
               </Route>

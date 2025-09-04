@@ -17,6 +17,7 @@ import userRoutes from './routes/users.js';
 import callRoutes from './routes/calls.js';
 import analysisRoutes from './routes/analysis.js';
 import dashboardRoutes from './routes/dashboard.js';
+import callingRulesRoutes from './routes/callingRules.js';
 
 // Import middleware
 import { errorHandler } from './middleware/errorHandler.js';
@@ -187,7 +188,8 @@ app.get('/', (req, res) => {
       users: '/api/users',
       calls: '/api/calls',
       dashboard: '/api/dashboard',
-      analysis: '/api/analysis'
+      analysis: '/api/analysis',
+      callingRules: '/api/calling-rules'
     }
   });
 });
@@ -226,6 +228,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/calls', callRoutes);
 app.use('/api/analysis', analysisRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/calling-rules', callingRulesRoutes);
 
 // Setup Socket.IO handlers
 setupSocketHandlers(io);

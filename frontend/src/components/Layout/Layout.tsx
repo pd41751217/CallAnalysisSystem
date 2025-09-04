@@ -31,6 +31,7 @@ import {
   AccountCircle,
   Logout,
   Settings,
+  Rule as RuleIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSocket } from '../../contexts/SocketContext';
@@ -42,6 +43,7 @@ const menuItems = [
   { text: 'Call History', icon: <HistoryIcon />, path: '/call-history' },
   { text: 'Live Analysis', icon: <AnalyticsIcon />, path: '/live-analysis' },
   { text: 'Overview', icon: <AssessmentIcon />, path: '/overview' },
+  { text: 'Calling Rules', icon: <RuleIcon />, path: '/calling-rules' },
   { text: 'User Management', icon: <PeopleIcon />, path: '/user-management' },
 ];
 

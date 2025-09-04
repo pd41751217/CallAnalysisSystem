@@ -24,3 +24,7 @@ export type { User as UserManagementUser, Team, CreateUserData, UpdateUserData }
 // Export call audit service
 export { callAuditService } from './callAuditService';
 export type { CallAuditData, TranscriptEntry as CallAuditTranscriptEntry } from './callAuditService';
+
+// Export calling rules service
+export { callingRulesService } from './callingRulesService';
+export type { CallingRule, CreateCallingRuleData, UpdateCallingRuleData, CallingRulesStats } from './callingRulesService';
