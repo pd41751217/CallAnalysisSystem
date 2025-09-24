@@ -145,8 +145,8 @@ export class CallController {
 
   static async addTranscript(callId, transcriptData) {
     try {
-      // Get existing call
-      const call = await Call.findById(callId);
+      // Get existing call by call_id (string) not id (integer)
+      const call = await Call.findByCallId(callId);
       if (!call) {
         throw new Error('Call not found');
       }
@@ -166,7 +166,7 @@ export class CallController {
       };
 
       // Update call with new analysis data
-      const updatedCall = await Call.updateAnalysisData(callId, updatedAnalysis);
+      const updatedCall = await Call.updateAnalysisDataByCallId(callId, updatedAnalysis);
       return updatedCall;
     } catch (error) {
       logger.error('Add transcript error:', error);

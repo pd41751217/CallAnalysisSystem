@@ -13,7 +13,7 @@ export class OpusDecoder {
   private sampleRate: number;
   private channels: number;
   
-  constructor(audioContext: AudioContext, sampleRate: number = 48000, channels: number = 1) {
+  constructor(audioContext: AudioContext, sampleRate: number = 24000, channels: number = 1) {
     this.audioContext = audioContext;
     this.sampleRate = sampleRate;
     this.channels = channels;

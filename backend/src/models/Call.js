@@ -9,9 +9,7 @@ export class Call {
           *,
           users (
             name,
-            teams (
-              name
-            )
+            team_id
           ),
           call_analysis (
             *
@@ -35,9 +33,7 @@ export class Call {
           *,
           users (
             name,
-            teams (
-              name
-            )
+            team_id
           ),
           call_analysis (
             *
@@ -245,6 +241,22 @@ export class Call {
         .from('calls')
         .update({ analysis_data: analysisData })
         .eq('id', id)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  static async updateAnalysisDataByCallId(callId, analysisData) {
+    try {
+      const { data, error } = await supabase
+        .from('calls')
+        .update({ analysis_data: analysisData })
+        .eq('call_id', callId)
         .select()
         .single();
       

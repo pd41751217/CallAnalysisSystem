@@ -15,7 +15,7 @@ interface AudioPlayerProps {
 const AudioPlayer: React.FC<AudioPlayerProps> = ({
   audioData,
   audioType,
-  sampleRate = 44100,
+  sampleRate = 24000,
   bitsPerSample = 16,
   channels = 2,
   // timestamp, // Unused - removed for deployment

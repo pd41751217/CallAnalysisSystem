@@ -65,10 +65,11 @@ const WebRTCAudioPlayer: React.FC<WebRTCAudioPlayerProps> = ({
   const [isTranscribing, setIsTranscribing] = useState(false);
   
   // Opus decoder for handling compressed audio
-  const opusDecoderRef = useRef<OpusDecoder<48000> | null>(null);
+  const opusDecoderRef = useRef<OpusDecoder<24000> | null>(null);
   
   // Speech recognition for live transcription
   const speechRecognitionRef = useRef<any>(null);
+  
   
   // Audio scheduling state - separate timing for mic and speaker
   const nextPlayTimeRef = useRef<number>(0);
@@ -226,7 +227,7 @@ const WebRTCAudioPlayer: React.FC<WebRTCAudioPlayerProps> = ({
           // Set up audio context for analysis with correct sample rate
           if (!audioContextRef.current) {
             audioContextRef.current = new AudioContext({
-              sampleRate: 48000 // Match Opus decoder sample rate
+              sampleRate: 24000 // Match Opus decoder sample rate
             });
           }
           
@@ -346,7 +347,7 @@ const WebRTCAudioPlayer: React.FC<WebRTCAudioPlayerProps> = ({
           // Set up audio context for base64 streaming with correct sample rate
       if (!audioContextRef.current) {
         audioContextRef.current = new AudioContext({
-          sampleRate: 48000 // Match Opus decoder sample rate
+          sampleRate: 24000 // Match Opus decoder sample rate
         });
       }
     
@@ -397,7 +398,7 @@ const WebRTCAudioPlayer: React.FC<WebRTCAudioPlayerProps> = ({
         
         // Get audio parameters
         const channels = data.channels || 1;
-        const sampleRate = data.sampleRate || 48000;
+        const sampleRate = data.sampleRate || 24000;
         
         console.log('🎵 Decoding Opus audio:', {
           channels,
@@ -428,21 +429,25 @@ const WebRTCAudioPlayer: React.FC<WebRTCAudioPlayerProps> = ({
             errors: decodedData.errors.length
           });
           
-          // Create audio buffer from decoded data
+          // Use the actual decoded sample rate from Opus decoder
+          const audioData = decodedData.channelData[0];
+          const actualSampleRate = decodedData.sampleRate;
+          
+          console.log('🎵 Using actual sample rate from Opus decoder:', actualSampleRate);
+          
+          // Create audio buffer from decoded data with correct sample rate
           audioBuffer = audioContextRef.current.createBuffer(
-            decodedData.channelData.length,
-            decodedData.samplesDecoded,
-            decodedData.sampleRate
+            1, // Mono
+            audioData.length,
+            actualSampleRate // Use actual sample rate from decoder
           );
           
-                  // Copy decoded data to audio buffer and calculate audio level
-        let maxLevel = 0;
-        for (let channel = 0; channel < decodedData.channelData.length; channel++) {
-          const channelData = audioBuffer.getChannelData(channel);
-          const decodedChannelData = decodedData.channelData[channel];
+          // Copy decoded data to audio buffer and calculate audio level
+          let maxLevel = 0;
+          const channelData = audioBuffer.getChannelData(0);
           
-          for (let i = 0; i < decodedData.samplesDecoded; i++) {
-            const sample = decodedChannelData[i];
+          for (let i = 0; i < audioData.length; i++) {
+            const sample = audioData[i];
             channelData[i] = sample;
             
             // Calculate audio level from decoded data
@@ -451,7 +456,6 @@ const WebRTCAudioPlayer: React.FC<WebRTCAudioPlayerProps> = ({
               maxLevel = absSample;
             }
           }
-        }
         
         // Update audio level from decoded data (backup method)
         if (maxLevel > 0) {
@@ -535,7 +539,7 @@ const WebRTCAudioPlayer: React.FC<WebRTCAudioPlayerProps> = ({
         if (audioContextRef.current.state === 'closed') {
           console.log('🎵 Audio context is closed, creating new one');
           audioContextRef.current = new AudioContext({
-            sampleRate: 48000
+            sampleRate: 24000
           });
           
           // Recreate analyser and gain node
@@ -641,7 +645,7 @@ const WebRTCAudioPlayer: React.FC<WebRTCAudioPlayerProps> = ({
         const initOpusDecoder = async () => {
           try {
             opusDecoderRef.current = new OpusDecoder({
-              sampleRate: 48000 as const,
+              sampleRate: 24000 as const, // Opus encoded at 24kHz
               channels: 1,
               forceStereo: false
             });
@@ -677,7 +681,7 @@ const WebRTCAudioPlayer: React.FC<WebRTCAudioPlayerProps> = ({
           try {
             if (!audioContextRef.current) {
               audioContextRef.current = new AudioContext({
-                sampleRate: 48000
+                sampleRate: 24000
               });
             }
             
@@ -691,12 +695,12 @@ const WebRTCAudioPlayer: React.FC<WebRTCAudioPlayerProps> = ({
             // Only play test tone if context is running
             if (audioContextRef.current.state === 'running') {
               // Create a simple test tone to verify audio is working
-              const testBuffer = audioContextRef.current.createBuffer(1, 480, 48000);
+              const testBuffer = audioContextRef.current.createBuffer(1, 240, 24000);
               const testData = testBuffer.getChannelData(0);
               
               // Generate a 440 Hz sine wave for 10ms
-              for (let i = 0; i < 480; i++) {
-                const time = i / 48000;
+              for (let i = 0; i < 240; i++) {
+                const time = i / 24000;
                 testData[i] = 0.3 * Math.sin(2 * Math.PI * 440 * time); // Louder test tone
               }
               

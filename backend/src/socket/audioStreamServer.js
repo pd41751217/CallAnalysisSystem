@@ -91,26 +91,13 @@ class AudioStreamServer {
         audioData: data.audioData,
         audioType: data.audioType,
         timestamp: data.timestamp || new Date().toISOString(),
-        sampleRate: data.sampleRate || 44100,
+        sampleRate: data.sampleRate || 24000,
         bitsPerSample: data.bitsPerSample || 16,
         channels: data.channels || 2
       });
     }
   }
 
-  // Method called by HTTP endpoint to broadcast audio
-  broadcastAudioFromHTTP(callId, audioData) {
-    this.broadcastAudioData(callId, {
-      type: 'audio_data',
-      callId,
-      audioData: audioData.audioData,
-      audioType: audioData.audioType,
-      timestamp: audioData.timestamp || new Date().toISOString(),
-      sampleRate: audioData.sampleRate || 44100,
-      bitsPerSample: audioData.bitsPerSample || 16,
-      channels: audioData.channels || 2
-    });
-  }
 
   broadcastAudioData(callId, audioData) {
     if (!this.io) {

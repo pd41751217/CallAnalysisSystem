@@ -3,6 +3,7 @@ import { supabase } from '../config/supabase.js';
 import { logger } from '../utils/logger.js';
 import { protect } from '../middleware/auth.js';
 import { broadcastDashboardUpdate } from '../utils/dashboardBroadcast.js';
+import { speechToTextService } from '../services/speechToTextService.js';
 
 const router = express.Router();
 
@@ -230,76 +231,6 @@ router.post('/stop-recording', async (req, res) => {
   }
 });
 
-// @route   POST /api/calls/stream-audio
-// @desc    Stream audio data from RecSendScAu client
-// @access  Private
-router.post('/stream-audio', async (req, res) => {
-  try {
-    const userId = req.user.id;
-    const { callId, audioData, timestamp, audioType } = req.body; // audioType: 'speaker' or 'mic'
-
-    // Validate call exists and is active
-    const { data: call, error: callError } = await supabase
-      .from('calls')
-      .select('call_id, status')
-      .eq('call_id', callId)
-      .eq('user_id', userId)
-      .single();
-
-    if (callError || !call) {
-      return res.status(404).json({
-        success: false,
-        message: 'No active call found'
-      });
-    }
-
-    // Broadcast audio data to admin monitors via AudioStreamServer
-    const audioStreamServer = req.app.get('audioStreamServer');
-    if (audioStreamServer) {
-      console.log(`Broadcasting audio data for call ${callId}:`, {
-        audioType,
-        audioDataSize: audioData ? audioData.length : 0,
-        timestamp,
-        sampleRate: req.body.sampleRate || 44100,
-        bitsPerSample: req.body.bitsPerSample || 16,
-        channels: req.body.channels || 2
-      });
-      
-      audioStreamServer.broadcastAudioFromHTTP(callId, {
-        audioData,
-        audioType,
-        timestamp,
-        sampleRate: req.body.sampleRate || 44100,
-        bitsPerSample: req.body.bitsPerSample || 16,
-        channels: req.body.channels || 2
-      });
-      
-      console.log(`Audio data broadcasted for call ${callId}`);
-    } else {
-      console.warn('AudioStreamServer not available for audio broadcasting');
-    }
-
-    // Update user's last login
-    await supabase
-      .from('users')
-      .update({ 
-        last_login: new Date().toISOString()
-      })
-      .eq('id', userId);
-
-    res.json({
-      success: true,
-      message: 'Audio data received and broadcasted'
-    });
-
-  } catch (error) {
-    logger.error('Stream audio error:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Failed to process audio data' 
-    });
-  }
-});
 
 // @route   GET /api/calls/active/:userId
 // @desc    Get active call for a specific user
@@ -439,6 +370,196 @@ router.get('/stream/:callId', async (req, res) => {
     res.status(500).json({ 
       success: false, 
       message: 'Failed to start call stream' 
+    });
+  }
+});
+
+// @route   GET /api/calls/transcript/:callId
+// @desc    Get real-time transcript for a call (SSE endpoint for C++ client)
+// @access  Private
+router.get('/transcript/:callId', async (req, res) => {
+  try {
+    const { callId } = req.params;
+    const userId = req.user.id;
+
+    // Validate call exists and user has access
+    const { data: call, error: callError } = await supabase
+      .from('calls')
+      .select('call_id, user_id, status')
+      .eq('call_id', callId)
+      .eq('user_id', userId)
+      .single();
+
+    if (callError || !call) {
+      return res.status(404).json({
+        success: false,
+        message: 'Call not found or access denied'
+      });
+    }
+
+    // Set up Server-Sent Events for real-time transcript streaming
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Headers': 'Cache-Control'
+    });
+
+    // Send initial connection confirmation
+    res.write(`data: ${JSON.stringify({
+      type: 'connected',
+      callId,
+      timestamp: new Date().toISOString()
+    })}\n\n`);
+
+    // Register callback for transcript updates
+    const transcriptCallback = (transcriptData) => {
+      try {
+        res.write(`data: ${JSON.stringify({
+          type: 'transcript',
+          callId,
+          transcript: transcriptData,
+          timestamp: new Date().toISOString()
+        })}\n\n`);
+      } catch (error) {
+        logger.error('Error sending transcript via SSE:', error);
+      }
+    };
+
+    speechToTextService.onTranscript(callId, transcriptCallback);
+
+    // Send heartbeat every 30 seconds
+    const heartbeatInterval = setInterval(() => {
+      try {
+        res.write(`data: ${JSON.stringify({
+          type: 'heartbeat',
+          callId,
+          timestamp: new Date().toISOString()
+        })}\n\n`);
+      } catch (error) {
+        clearInterval(heartbeatInterval);
+      }
+    }, 30000);
+
+    // Clean up on client disconnect
+    req.on('close', () => {
+      clearInterval(heartbeatInterval);
+      // Remove callback from STT service
+      const callbacks = speechToTextService.transcriptCallbacks.get(callId);
+      if (callbacks) {
+        const index = callbacks.indexOf(transcriptCallback);
+        if (index > -1) {
+          callbacks.splice(index, 1);
+        }
+      }
+      logger.info(`Transcript SSE connection closed for call ${callId}`);
+    });
+
+  } catch (error) {
+    logger.error('Transcript SSE error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to start transcript stream' 
+    });
+  }
+});
+
+// @route   GET /api/calls/transcript-poll/:callId
+// @desc    Get latest transcript for a call (Simple polling endpoint for C++ client)
+// @access  Private
+router.get('/transcript-poll/:callId', async (req, res) => {
+  try {
+    const { callId } = req.params;
+    const userId = req.user.id;
+
+    // Validate call exists and user has access
+    const { data: call, error: callError } = await supabase
+      .from('calls')
+      .select('call_id, user_id, status')
+      .eq('call_id', callId)
+      .eq('user_id', userId)
+      .single();
+
+    if (callError || !call) {
+      return res.status(404).json({
+        success: false,
+        message: 'Call not found or access denied'
+      });
+    }
+
+    // Get latest transcript from database
+    const { data: transcripts, error: transcriptError } = await supabase
+      .from('call_transcripts')
+      .select('*')
+      .eq('call_id', callId)
+      .order('timestamp', { ascending: false })
+      .limit(1);
+
+    if (transcriptError) {
+      logger.error('Error fetching transcript:', transcriptError);
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to fetch transcript'
+      });
+    }
+
+    // Return the latest transcript or empty response
+    const latestTranscript = transcripts && transcripts.length > 0 ? transcripts[0] : null;
+    
+    res.json({
+      success: true,
+      callId,
+      transcript: latestTranscript,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    logger.error('Transcript polling error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to fetch transcript' 
+    });
+  }
+});
+
+// @route   GET /api/calls/stt-status/:callId
+// @desc    Get STT processing status for a call
+// @access  Private
+router.get('/stt-status/:callId', async (req, res) => {
+  try {
+    const { callId } = req.params;
+    const userId = req.user.id;
+
+    // Validate call exists and user has access
+    const { data: call, error: callError } = await supabase
+      .from('calls')
+      .select('call_id, user_id')
+      .eq('call_id', callId)
+      .eq('user_id', userId)
+      .single();
+
+    if (callError || !call) {
+      return res.status(404).json({
+        success: false,
+        message: 'Call not found or access denied'
+      });
+    }
+
+    const status = speechToTextService.getStatus(callId);
+
+    res.json({
+      success: true,
+      callId,
+      status,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    logger.error('STT status error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to get STT status' 
     });
   }
 });

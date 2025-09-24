@@ -112,7 +112,7 @@ app.use(cors({
     if (validOrigins.indexOf(origin) !== -1) {
       callback(null, true);
     } else {
-      console.log('CORS blocked origin:', origin);
+      // console.log('CORS blocked origin:', origin); // Disabled to focus on STT logs
       callback(new Error('Not allowed by CORS'));
     }
   },
@@ -161,16 +161,16 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // Compression middleware
 app.use(compression());
 
-// Logging middleware
-if (process.env.NODE_ENV === 'development') {
-  app.use(morgan('dev'));
-} else {
-  app.use(morgan('combined', {
-    stream: {
-      write: (message) => logger.info(message.trim())
-    }
-  }));
-}
+// Logging middleware - DISABLED to focus on STT logs
+// if (process.env.NODE_ENV === 'development') {
+//   app.use(morgan('dev'));
+// } else {
+//   app.use(morgan('combined', {
+//     stream: {
+//       write: (message) => logger.info(message.trim())
+//     }
+//   }));
+// }
 
 // Static files
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
@@ -215,12 +215,13 @@ app.get('/api/test', (req, res) => {
 });
 
 // Debug middleware to log all requests
-app.use((req, res, next) => {
-  console.log(`${req.method} ${req.originalUrl} - ${new Date().toISOString()}`);
-  console.log('Origin:', req.headers.origin);
-  console.log('User-Agent:', req.headers['user-agent']);
-  next();
-});
+// Debug middleware - DISABLED to focus on STT logs
+// app.use((req, res, next) => {
+//   console.log(`${req.method} ${req.originalUrl} - ${new Date().toISOString()}`);
+//   console.log('Origin:', req.headers.origin);
+//   console.log('User-Agent:', req.headers['user-agent']);
+//   next();
+// });
 
 // API routes
 app.use('/api/auth', authRoutes);
@@ -235,6 +236,9 @@ setupSocketHandlers(io);
 
 // Set Socket.IO instance for dashboard broadcasting
 setSocketIO(io);
+
+// Set global Socket.IO instance for other services
+global.io = io;
 
 // Setup WebRTC handlers
 // The WebRTC server handles its own connections internally
