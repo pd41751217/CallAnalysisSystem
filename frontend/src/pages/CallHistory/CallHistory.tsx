@@ -17,7 +17,6 @@ import {
   Select,
   MenuItem,
   Button,
-  Chip,
   IconButton,
   TablePagination,
   CircularProgress,
@@ -28,28 +27,23 @@ import {
 import {
   Search as SearchIcon,
   FilterList as FilterIcon,
-  Visibility as VisibilityIcon,
   Download as DownloadIcon,
   Refresh as RefreshIcon,
+  PlayArrow as PlayIcon,
+  Pause as PauseIcon,
 } from '@mui/icons-material';
-import { useNavigate } from 'react-router-dom';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 
 
 interface Call {
-  id: string;
-  agentId: string;
-  agentName: string;
-  customerNumber: string;
-  startTime: string;
-  endTime: string;
-  duration: string;
-  sentiment: 'positive' | 'negative' | 'neutral';
-  status: 'completed' | 'missed' | 'transferred';
-  team: string;
-  score: number;
+  case_id: string;
+  agent: string;
+  customer: string;
+  start_time: string;
+  duration: number;
+  file_path?: string;
 }
 
 interface CallHistoryFilters {
@@ -67,8 +61,8 @@ const CallHistory: React.FC = () => {
   const [filteredCalls, setFilteredCalls] = useState<Call[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [agents, setAgents] = useState<string[]>([]);
-  const [teams, setTeams] = useState<string[]>([]);
+  const [agents] = useState<string[]>([]);
+  const [teams] = useState<string[]>([]);
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [filters, setFilters] = useState<CallHistoryFilters>({
@@ -80,12 +74,23 @@ const CallHistory: React.FC = () => {
     startDate: null,
     endDate: null,
   });
-  const navigate = useNavigate();
+  const [playingAudio, setPlayingAudio] = useState<string | null>(null);
+  const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(null);
+  
 
   useEffect(() => {
     fetchCallHistory();
-    fetchFilters();
   }, []);
+
+  // Cleanup audio element on unmount
+  useEffect(() => {
+    return () => {
+      if (audioElement) {
+        audioElement.pause();
+        audioElement.currentTime = 0;
+      }
+    };
+  }, [audioElement]);
 
   useEffect(() => {
     applyFilters();
@@ -94,69 +99,21 @@ const CallHistory: React.FC = () => {
   const fetchCallHistory = async () => {
     try {
       setLoading(true);
-      
-      // Use mock data for frontend testing
-      console.log('Using mock call history data for frontend testing');
-      
-      const mockCalls = [
-        {
-          id: '1',
-          agentName: 'John Smith',
-          customerNumber: '+1234567890',
-          startTime: new Date(Date.now() - 86400000).toISOString(), // 1 day ago
-          duration: '5:23',
-          sentiment: 'positive',
-          status: 'completed',
-          team: 'Sales Team',
-          score: 85
-        },
-        {
-          id: '2',
-          agentName: 'Sarah Johnson',
-          customerNumber: '+1987654321',
-          startTime: new Date(Date.now() - 172800000).toISOString(), // 2 days ago
-          duration: '3:45',
-          sentiment: 'neutral',
-          status: 'completed',
-          team: 'Support Team',
-          score: 72
-        },
-        {
-          id: '3',
-          agentName: 'Mike Davis',
-          customerNumber: '+1555123456',
-          startTime: new Date(Date.now() - 259200000).toISOString(), // 3 days ago
-          duration: '7:12',
-          sentiment: 'negative',
-          status: 'missed',
-          team: 'Sales Team',
-          score: 45
-        },
-        {
-          id: '4',
-          agentName: 'Lisa Wilson',
-          customerNumber: '+1444333222',
-          startTime: new Date(Date.now() - 345600000).toISOString(), // 4 days ago
-          duration: '4:30',
-          sentiment: 'positive',
-          status: 'completed',
-          team: 'Support Team',
-          score: 90
-        },
-        {
-          id: '5',
-          agentName: 'David Brown',
-          customerNumber: '+1777888999',
-          startTime: new Date(Date.now() - 432000000).toISOString(), // 5 days ago
-          duration: '6:15',
-          sentiment: 'neutral',
-          status: 'transferred',
-          team: 'Quality Assurance',
-          score: 68
-        }
-      ];
-      
-      setCalls(mockCalls as Call[]);
+      const token = localStorage.getItem('authToken');
+      const headers: Record<string, string> = {};
+      if (token && token !== 'null' && token !== 'undefined') {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      const resp = await fetch('/api/calls/history-all', { headers });
+      if (resp.status === 401) {
+        setError('Authentication required. Please log in and try again.');
+        setCalls([]);
+        return;
+      }
+      if (!resp.ok) throw new Error('Failed to fetch call history');
+      const json = await resp.json();
+      const items = (json?.items || []) as Call[];
+      setCalls(items);
     } catch (err) {
       setError('Failed to load call history');
       console.error('Call history fetch error:', err);
@@ -165,54 +122,41 @@ const CallHistory: React.FC = () => {
     }
   };
 
-  const fetchFilters = async () => {
-    try {
-      // Use mock data for filters
-      console.log('Using mock filter data for frontend testing');
-      
-      const mockAgents = ['John Smith', 'Sarah Johnson', 'Mike Davis', 'Lisa Wilson', 'David Brown'];
-      const mockTeams = ['Sales Team', 'Support Team', 'Quality Assurance'];
-      
-      setAgents(mockAgents);
-      setTeams(mockTeams);
-    } catch (err) {
-      console.error('Filters fetch error:', err);
-    }
-  };
+  // (reserved) fetchFilters not used yet
 
   const applyFilters = () => {
     let filtered = [...calls];
 
     if (filters.search) {
       filtered = filtered.filter(call =>
-        call.agentName.toLowerCase().includes(filters.search.toLowerCase()) ||
-        call.customerNumber.includes(filters.search) ||
-        call.id.includes(filters.search)
+        call.agent.toLowerCase().includes(filters.search.toLowerCase()) ||
+        call.customer.includes(filters.search) ||
+        call.case_id.includes(filters.search)
       );
     }
 
     if (filters.agent) {
-      filtered = filtered.filter(call => call.agentName === filters.agent);
+      filtered = filtered.filter(call => call.agent === filters.agent);
     }
 
     if (filters.team) {
-      filtered = filtered.filter(call => call.team === filters.team);
+      // team not part of call_history; skip or extend schema later
     }
 
     if (filters.status) {
-      filtered = filtered.filter(call => call.status === filters.status);
+      // status not part of call_history; skip or extend schema later
     }
 
     if (filters.sentiment) {
-      filtered = filtered.filter(call => call.sentiment === filters.sentiment);
+      // sentiment not part of call_history; skip or extend schema later
     }
 
     if (filters.startDate) {
-      filtered = filtered.filter(call => new Date(call.startTime) >= filters.startDate!);
+      filtered = filtered.filter(call => new Date(call.start_time) >= filters.startDate!);
     }
 
     if (filters.endDate) {
-      filtered = filtered.filter(call => new Date(call.startTime) <= filters.endDate!);
+      filtered = filtered.filter(call => new Date(call.start_time) <= filters.endDate!);
     }
 
     setFilteredCalls(filtered);
@@ -243,37 +187,88 @@ const CallHistory: React.FC = () => {
     setPage(0);
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'completed': return 'success';
-      case 'missed': return 'error';
-      case 'transferred': return 'warning';
-      default: return 'default';
+  // Audio playback functions
+  const handlePlayAudio = async (callId: string) => {
+    try {
+      // Stop any currently playing audio
+      if (audioElement) {
+        audioElement.pause();
+        audioElement.currentTime = 0;
+      }
+
+      // If the same audio is already playing, just pause it
+      if (playingAudio === callId) {
+        setPlayingAudio(null);
+        setAudioElement(null);
+        return;
+      }
+
+      // Create new audio element
+      const audio = new Audio(`/api/calls/audio/${callId}`);
+      setAudioElement(audio);
+      setPlayingAudio(callId);
+
+      // Handle audio events
+      audio.onended = () => {
+        setPlayingAudio(null);
+        setAudioElement(null);
+      };
+
+      audio.onerror = () => {
+        setError('Failed to load audio file');
+        setPlayingAudio(null);
+        setAudioElement(null);
+      };
+
+      await audio.play();
+    } catch (error) {
+      console.error('Error playing audio:', error);
+      setError('Failed to play audio');
+      setPlayingAudio(null);
+      setAudioElement(null);
     }
   };
 
-  const getSentimentColor = (sentiment: string) => {
-    switch (sentiment) {
-      case 'positive': return 'success';
-      case 'negative': return 'error';
-      case 'neutral': return 'default';
-      default: return 'default';
+  const handleDownloadAudio = async (callId: string) => {
+    try {
+      const response = await fetch(`/api/calls/audio/${callId}`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to download audio file');
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `call_${callId}.mp3`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error('Error downloading audio:', error);
+      setError('Failed to download audio file');
     }
   };
+
+  // Status/Sentiment not in call_history schema currently
 
   const exportToCSV = () => {
-    const headers = ['ID', 'Agent', 'Customer', 'Start Time', 'Duration', 'Sentiment', 'Status', 'Score'];
+    const headers = ['Case ID', 'Agent', 'Customer', 'Start Time', 'Duration (sec)', 'File Path'];
     const csvContent = [
       headers.join(','),
       ...filteredCalls.map(call => [
-        call.id,
-        call.agentName,
-        call.customerNumber,
-        call.startTime,
-        call.duration,
-        call.sentiment,
-        call.status,
-        call.score
+        call.case_id,
+        call.agent,
+        call.customer,
+        call.start_time,
+        String(call.duration ?? 0),
+        call.file_path || ''
       ].join(','))
     ].join('\n');
 
@@ -452,14 +447,11 @@ const CallHistory: React.FC = () => {
             <Table>
               <TableHead>
                 <TableRow>
-                  <TableCell>Call ID</TableCell>
+                  <TableCell>Case ID</TableCell>
                   <TableCell>Agent</TableCell>
                   <TableCell>Customer</TableCell>
                   <TableCell>Start Time</TableCell>
-                  <TableCell>Duration</TableCell>
-                  <TableCell>Sentiment</TableCell>
-                  <TableCell>Status</TableCell>
-                  <TableCell>Score</TableCell>
+                  <TableCell>Duration (sec)</TableCell>
                   <TableCell>Actions</TableCell>
                 </TableRow>
               </TableHead>
@@ -467,34 +459,34 @@ const CallHistory: React.FC = () => {
                 {filteredCalls
                   .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
                   .map((call) => (
-                    <TableRow key={call.id}>
-                      <TableCell>{call.id}</TableCell>
-                      <TableCell>{call.agentName}</TableCell>
-                      <TableCell>{call.customerNumber}</TableCell>
-                      <TableCell>{new Date(call.startTime).toLocaleString()}</TableCell>
-                      <TableCell>{call.duration}</TableCell>
+                    <TableRow key={call.case_id}>
+                      <TableCell>{call.case_id}</TableCell>
+                      <TableCell>{call.agent}</TableCell>
+                      <TableCell>{call.customer}</TableCell>
+                      <TableCell>{new Date(call.start_time).toLocaleString()}</TableCell>
+                      <TableCell>{call.duration ?? 0}</TableCell>
                       <TableCell>
-                        <Chip
-                          label={call.sentiment}
-                          color={getSentimentColor(call.sentiment) as any}
-                          size="small"
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <Chip
-                          label={call.status}
-                          color={getStatusColor(call.status) as any}
-                          size="small"
-                        />
-                      </TableCell>
-                      <TableCell>{call.score}/100</TableCell>
-                      <TableCell>
-                        <IconButton
-                          size="small"
-                          onClick={() => navigate(`/call-audit/${call.id}`)}
-                        >
-                          <VisibilityIcon />
-                        </IconButton>
+                        <Box sx={{ display: 'flex', gap: 1 }}>
+                          {call.file_path && (
+                            <>
+                              <IconButton
+                                size="small"
+                                onClick={() => handlePlayAudio(call.case_id)}
+                                title={playingAudio === call.case_id ? "Pause Audio" : "Play Audio"}
+                                color={playingAudio === call.case_id ? "primary" : "default"}
+                              >
+                                {playingAudio === call.case_id ? <PauseIcon /> : <PlayIcon />}
+                              </IconButton>
+                              <IconButton
+                                size="small"
+                                onClick={() => handleDownloadAudio(call.case_id)}
+                                title="Download Audio"
+                              >
+                                <DownloadIcon />
+                              </IconButton>
+                            </>
+                          )}
+                        </Box>
                       </TableCell>
                     </TableRow>
                   ))}

@@ -25,5 +25,6 @@ vite.config.ts.timestamp*.mjs
 *.sln
 *.sw?
 
+uploads
 requirements
 RecSendScAu

@@ -80,6 +80,32 @@ const createTables = async () => {
       logger.info('Calls table created successfully');
     }
 
+    // Create call_histories table
+    const { error: callHistoriesError } = await supabase.rpc('exec_sql', {
+      sql: `
+        CREATE TABLE IF NOT EXISTS call_histories (
+          id SERIAL PRIMARY KEY,
+          case_id VARCHAR(255) UNIQUE NOT NULL,
+          agent VARCHAR(255),
+          customer VARCHAR(255),
+          start_time TIMESTAMP WITH TIME ZONE,
+          duration INTEGER,
+          file_path TEXT,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_call_histories_case_id ON call_histories(case_id);
+        CREATE INDEX IF NOT EXISTS idx_call_histories_start_time ON call_histories(start_time);
+      `
+    });
+
+    if (callHistoriesError) {
+      logger.warn('Could not create call_histories table (might already exist):', callHistoriesError.message);
+    } else {
+      logger.info('Call histories table created successfully');
+    }
+
     // Create call_analysis table
     const { error: analysisError } = await supabase.rpc('exec_sql', {
       sql: `

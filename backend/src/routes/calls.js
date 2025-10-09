@@ -1,4 +1,7 @@
 import express from 'express';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
 import { supabase } from '../config/supabase.js';
 import { logger } from '../utils/logger.js';
 import { protect } from '../middleware/auth.js';
@@ -6,6 +9,39 @@ import { broadcastDashboardUpdate } from '../utils/dashboardBroadcast.js';
 import { speechToTextService } from '../services/speechToTextService.js';
 
 const router = express.Router();
+
+// Configure multer for audio file uploads
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const uploadDir = path.join(process.cwd(), 'uploads', 'audio');
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    cb(null, uploadDir);
+  },
+  filename: (req, file, cb) => {
+    // Use the filename provided by the C++ client (ID_StartTime_Duration.mp3)
+    cb(null, file.originalname);
+  }
+});
+
+const upload = multer({
+  storage: storage,
+  limits: {
+    fileSize: 100 * 1024 * 1024 // 100MB limit
+  },
+  fileFilter: (req, file, cb) => {
+    const name = (file.originalname || '').toLowerCase();
+    if (
+      file.mimetype === 'audio/mpeg' || file.mimetype === 'audio/mp3' || name.endsWith('.mp3') ||
+      file.mimetype === 'audio/wav' || name.endsWith('.wav')
+    ) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only MP3 or WAV audio files are allowed'), false);
+    }
+  }
+});
 
 // Apply auth middleware to all routes
 router.use(protect);
@@ -560,6 +596,322 @@ router.get('/stt-status/:callId', async (req, res) => {
     res.status(500).json({ 
       success: false, 
       message: 'Failed to get STT status' 
+    });
+  }
+});
+
+// @route   GET /api/call-history
+// @desc    Get call history rows
+// @access  Private
+router.get('/history-all', async (req, res) => {
+  try {
+    // Basic list ordered by start_time desc
+    const { data, error } = await supabase
+      .from('call_histories')
+      .select('*')
+      .order('start_time', { ascending: false });
+
+    if (error) throw error;
+
+    res.json({ success: true, items: data || [] });
+  } catch (error) {
+    logger.error('Get call history error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch call history' });
+  }
+});
+
+// @route   POST /api/calls/upload-audio
+// @desc    Upload audio file for a call
+// @access  Private
+router.post('/upload-audio', upload.single('audio'), async (req, res) => {
+  try {
+    const { callId, duration } = req.body;
+    const userId = req.user.id;
+
+    // Debug logging
+    logger.info('Upload request received:', {
+      callId: callId,
+      duration: duration,
+      userId: userId,
+      hasFile: !!req.file,
+      fileName: req.file?.filename,
+      body: req.body
+    });
+
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'No audio file provided'
+      });
+    }
+
+    if (!callId) {
+      // Delete the uploaded file if no callId provided
+      fs.unlinkSync(req.file.path);
+      logger.error('No callId provided in audio stream');
+      return res.status(400).json({
+        success: false,
+        message: 'Call ID is required'
+      });
+    }
+
+    // Verify the call exists and belongs to the user
+    const { data: call, error: callError } = await supabase
+      .from('calls')
+      .select('call_id, user_id')
+      .eq('call_id', callId)
+      .eq('user_id', userId)
+      .single();
+
+    if (callError || !call) {
+      // Delete the uploaded file if call not found
+      fs.unlinkSync(req.file.path);
+      return res.status(404).json({
+        success: false,
+        message: 'Call not found or access denied'
+      });
+    }
+
+    // If WAV, transcode to MP3 for consistent playback in UI
+    let finalFileName = req.file.filename;
+    const uploadDir = path.join(process.cwd(), 'uploads', 'audio');
+    const filePath = path.join(uploadDir, req.file.filename);
+    const lower = req.file.filename.toLowerCase();
+
+    if (lower.endsWith('.wav')) {
+      try {
+        // Use fluent-ffmpeg to transcode to MP3; try to set binary path if available
+        const ffmpegMod = (await import('fluent-ffmpeg')).default;
+        try {
+          const ffmpegInstaller = await import('@ffmpeg-installer/ffmpeg');
+          if (ffmpegInstaller?.path) {
+            ffmpegMod.setFfmpegPath(ffmpegInstaller.path);
+          }
+        } catch (e) {
+          // ffmpeg installer not available; rely on system ffmpeg
+          logger.warn('ffmpeg installer not found; using system ffmpeg if present');
+        }
+
+        const mp3Name = req.file.filename.replace(/\.wav$/i, '.mp3');
+        const mp3Path = path.join(uploadDir, mp3Name);
+
+        await new Promise((resolve, reject) => {
+          ffmpegMod(filePath)
+            .audioCodec('libmp3lame')
+            .format('mp3')
+            .on('end', resolve)
+            .on('error', reject)
+            .save(mp3Path);
+        });
+
+        // Replace final file name with mp3; optionally delete wav
+        try { fs.unlinkSync(filePath); } catch (e) {}
+        finalFileName = mp3Name;
+      } catch (e) {
+        logger.warn('Transcode to MP3 failed; keeping WAV:', e);
+        // Fall back to serving WAV if transcode fails
+        finalFileName = req.file.filename;
+      }
+    }
+
+    // Note: We don't need to update the calls table with audio_file
+    // The call_histories table already has the file_path field
+
+    // Upsert into call_histories
+    try {
+      // Fetch agent name and customer from calls.analysis_data
+      const { data: callRow } = await supabase
+        .from('calls')
+        .select(`call_id, user_id, duration, created_at, analysis_data, users(name)`)
+        .eq('call_id', callId)
+        .single();
+
+      const agentName = callRow?.users?.name || 'Unknown';
+      const customer = callRow?.analysis_data?.customer_number || 'Unknown';
+      const startTime = callRow?.created_at || new Date().toISOString();
+      const recordingDuration = parseInt(duration) || 0; // Use uploaded duration
+
+      // Log all data being used for insert
+      logger.info('Call_histories insert data:', {
+        callId: callId,
+        agentName: agentName,
+        customer: customer,
+        startTime: startTime,
+        duration: recordingDuration,
+        finalFileName: finalFileName,
+        callRow: callRow
+      });
+
+      // Use Supabase upsert instead of raw SQL
+      const insertData = {
+        case_id: callId,
+        agent: agentName,
+        customer: customer,
+        start_time: startTime,
+        duration: recordingDuration,
+        file_path: finalFileName
+      };
+
+      logger.info('Upserting data:', insertData);
+
+      const { data: insertResult, error: insertError } = await supabase
+        .from('call_histories')
+        .upsert(insertData, {
+          onConflict: 'case_id'
+        })
+        .select();
+
+      if (insertError) {
+        logger.error('Upsert error:', insertError);
+        throw insertError;
+      }
+
+      logger.info('Upsert result:', insertResult);
+      logger.info('Successfully upserted call_histories record for callId:', callId);
+    } catch (e) {
+      logger.error('Failed to upsert call_histories:', e);
+    }
+
+    logger.info(`Audio file uploaded for call ${callId}: ${req.file.filename}`);
+
+    res.json({
+      success: true,
+      message: 'Audio file uploaded successfully',
+      filename: req.file.filename
+    });
+
+  } catch (error) {
+    logger.error('Upload audio error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to upload audio file'
+    });
+  }
+});
+
+// @route   GET /api/calls/audio/:callId
+// @desc    Serve audio file for a call
+// @access  Private
+router.get('/audio/:callId', async (req, res) => {
+  try {
+    const { callId } = req.params;
+    const userId = req.user.id;
+
+    // Get call information from call_histories table
+    const { data: callHistory, error: callError } = await supabase
+      .from('call_histories')
+      .select('file_path')
+      .eq('case_id', callId)
+      .single();
+
+    if (callError || !callHistory) {
+      return res.status(404).json({
+        success: false,
+        message: 'Call not found or no audio file available'
+      });
+    }
+
+    if (!callHistory.file_path) {
+      return res.status(404).json({
+        success: false,
+        message: 'No audio file found for this call'
+      });
+    }
+
+    const audioPath = path.join(process.cwd(), 'uploads', 'audio', callHistory.file_path);
+
+    // Check if file exists
+    if (!fs.existsSync(audioPath)) {
+      return res.status(404).json({
+        success: false,
+        message: 'Audio file not found on server'
+      });
+    }
+
+    // Set appropriate headers for audio streaming
+    const lowerName = callHistory.file_path.toLowerCase();
+    const mime = lowerName.endsWith('.wav') ? 'audio/wav' : 'audio/mpeg';
+    res.setHeader('Content-Type', mime);
+    res.setHeader('Content-Disposition', `inline; filename="${callHistory.file_path}"`);
+    res.setHeader('Cache-Control', 'public, max-age=3600'); // Cache for 1 hour
+
+    // Stream the audio file
+    const audioStream = fs.createReadStream(audioPath);
+    audioStream.pipe(res);
+
+    audioStream.on('error', (error) => {
+      logger.error('Error streaming audio file:', error);
+      if (!res.headersSent) {
+        res.status(500).json({
+          success: false,
+          message: 'Error streaming audio file'
+        });
+      }
+    });
+
+  } catch (error) {
+    logger.error('Serve audio error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to serve audio file'
+    });
+  }
+});
+
+// @route   DELETE /api/calls/:callId
+// @desc    Delete a call record
+// @access  Private
+router.delete('/:callId', async (req, res) => {
+  try {
+    const { callId } = req.params;
+    const userId = req.user.id;
+
+    logger.info('Delete call request received:', {
+      callId: callId,
+      userId: userId
+    });
+
+    // Verify the call exists and belongs to the user
+    const { data: call, error: callError } = await supabase
+      .from('calls')
+      .select('call_id, user_id')
+      .eq('call_id', callId)
+      .eq('user_id', userId)
+      .single();
+
+    if (callError || !call) {
+      return res.status(404).json({
+        success: false,
+        message: 'Call not found or access denied'
+      });
+    }
+
+    // Delete the call record
+    const { error: deleteError } = await supabase
+      .from('calls')
+      .delete()
+      .eq('call_id', callId)
+      .eq('user_id', userId);
+
+    if (deleteError) {
+      logger.error('Failed to delete call:', deleteError);
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to delete call record'
+      });
+    }
+
+    logger.info(`Call ${callId} deleted successfully`);
+
+    res.json({
+      success: true,
+      message: 'Call record deleted successfully'
+    });
+  } catch (error) {
+    logger.error('Delete call error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete call record'
     });
   }
 });
