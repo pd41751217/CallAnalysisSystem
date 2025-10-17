@@ -47,15 +47,24 @@ class RealtimeTranscriptionService {
 
     // Connect to OpenAI Realtime API for a specific call and audio type
     connectRealtimeSession(callId, audioType = 'mic') {
-        const model = process.env.OPENAI_REALTIME_MODEL || 'gpt-realtime';
-        const url = `wss://api.openai.com/v1/realtime?model=${encodeURIComponent(model)}`;
+        // const model = process.env.OPENAI_REALTIME_MODEL || 'gpt-realtime';
+        // const url = `wss://api.openai.com/v1/realtime?model=${encodeURIComponent(model)}`;
 
-        const openaiWs = new WebSocket(url, {
-            headers: {
-                Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-                'OpenAI-Beta': 'realtime=v1',
-            },
-        });
+        // const openaiWs = new WebSocket(url, {
+        //     headers: {
+        //         Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        //         'OpenAI-Beta': 'realtime=v1',
+        //     },
+        // });
+        
+        const openaiWs = new WebSocket(
+            "wss://api.openai.com/v1/realtime?intent=transcription",
+            [
+                "realtime",
+                `openai-insecure-api-key.${process.env.OPENAI_API_KEY}`,
+                "openai-beta.realtime-v1",
+            ]
+        );
 
         // Store connection based on audio type
         if (audioType === 'mic') {
@@ -106,24 +115,38 @@ class RealtimeTranscriptionService {
         // Use clean transcription prompt without descriptive text
         const audioTypePrompt = process.env.TRANSCRIPTION_PROMPT || 'Transcribe the speech accurately.';
 
+        // const sessionUpdate = {
+        //     type: 'session.update',
+        //     session: {
+        //         // Configure transcription-only behavior
+        //         model: transcriptionModel,
+        //         input_audio_format: 'pcm16',
+        //         input_audio_transcription: {
+        //             model: transcriptionModel,
+        //             language: 'en',
+        //             prompt: audioTypePrompt
+        //         },
+        //         turn_detection: process.env.VAD_ENABLED === 'false' ? null : {
+        //             type: 'server_vad',
+        //             threshold: vadThreshold,
+        //             prefix_padding_ms: vadPrefixPaddingMs,
+        //             silence_duration_ms: vadSilenceDurationMs,
+        //         }
+        //     }
+        // };
         const sessionUpdate = {
-            type: 'session.update',
+            type: "transcription_session.update",
             session: {
-                // Configure transcription-only behavior
-                model: transcriptionModel,
-                input_audio_format: 'pcm16',
                 input_audio_transcription: {
-                    model: transcriptionModel,
-                    language: 'en',
-                    prompt: audioTypePrompt
+                    model: "gpt-4o-transcribe",
+                    language: "en",
                 },
-                turn_detection: process.env.VAD_ENABLED === 'false' ? null : {
-                    type: 'server_vad',
-                    threshold: vadThreshold,
-                    prefix_padding_ms: vadPrefixPaddingMs,
-                    silence_duration_ms: vadSilenceDurationMs,
-                }
-            }
+                input_audio_noise_reduction: { type: "near_field" },
+                turn_detection: {
+                    type: "semantic_vad",
+                    eagerness: "low",
+                },
+            },
         };
 
         this.safeSend(openaiWs, JSON.stringify(sessionUpdate));
