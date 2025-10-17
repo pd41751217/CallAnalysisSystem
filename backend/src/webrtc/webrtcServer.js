@@ -2,8 +2,8 @@
 // This will handle signaling and prepare for WebRTC implementation
 
 import { WebSocketServer } from 'ws';
-import { speechToTextService } from '../services/speechToTextService.js';
 import { logger } from '../utils/logger.js';
+import RealtimeTranscriptionService from '../services/realtimeTranscriptionService.js';
 
 class WebRTCServer {
     constructor(io) {
@@ -11,6 +11,12 @@ class WebRTCServer {
         this.peerConnections = new Map(); // callId -> RTCPeerConnection
         this.audioStreams = new Map(); // callId -> MediaStream
         this.rawWebSocketConnections = new Map(); // socketId -> raw WebSocket connection
+        this.transcriptionService = new RealtimeTranscriptionService();
+        
+        // Override the emitTranscriptionUpdate method to emit to Socket.IO clients
+        this.transcriptionService.emitTranscriptionUpdate = (callId, transcriptionData) => {
+            this.emitTranscriptionUpdate(callId, transcriptionData);
+        };
         
         this.setupSocketHandlers();
         this.setupRawWebSocketHandler();
@@ -78,12 +84,6 @@ class WebRTCServer {
                                 const response = '42["call_joined",{"callId":"' + eventData.callId + '","status":"success"}]';
                                 ws.send(response);
                                 
-                                // Set up transcript callback for this call
-                                logger.debug('Setting up transcript callback for call:', callId);
-                                speechToTextService.onTranscript(callId, (transcript) => {
-                                    logger.debug('Transcript callback triggered for call:', callId);
-                                    this.sendTranscriptToClient(ws, callId, transcript);
-                                });
                                 
                             } else if (eventName === 'webrtc_offer') {
                                 // Handle WebRTC offer
@@ -122,25 +122,35 @@ a=ice-pwd:${this.generateIcePwd()}`
                                 });
                                 
                             } else if (eventName === 'audio_stream') {
-                                // 🎯 SEND AUDIO TO STT SERVICE - Process for speech-to-text
-                                try {
-                                    if (!eventData.callId) {
-                                        logger.error('No callId provided in audio stream');
-                                        return;
-                                    }
-                                    
-                                    await speechToTextService.processAudioData(eventData.callId, {
-                                        audioType: eventData.audioType,
-                                        audioData: eventData.audioData,
-                                        timestamp: eventData.timestamp || Date.now(),
-                                        sampleRate: eventData.sampleRate || 24000,
-                                        bitsPerSample: eventData.bitsPerSample || 16,
-                                        channels: eventData.channels || 1
-                                    });
-                                } catch (sttError) {
-                                    logger.error('STT processing error for call', eventData.callId, ':', sttError.message);
-                                }
+                                const { callId, audioType, audioData, sampleRate, channels } = eventData;
                                 
+                                // Start appropriate transcription session if not already active
+                                if (audioType === 'mic' && !this.transcriptionService.isMicTranscriptionActive(callId)) {
+                                    this.transcriptionService.startMicTranscription(callId);
+                                    logger.info(`Started mic transcription for call ${callId}`);
+                                } else if (audioType === 'speaker' && !this.transcriptionService.isSpeakerTranscriptionActive(callId)) {
+                                    this.transcriptionService.startSpeakerTranscription(callId);
+                                    logger.info(`Started speaker transcription for call ${callId}`);
+                                }
+
+                                // Send audio data for transcription based on audio type
+                                if (audioData) {
+                                    try {
+                                        // Send Opus-encoded audio data to appropriate transcription service
+                                        this.transcriptionService.sendAudioData(
+                                            callId, 
+                                            audioData, 
+                                            sampleRate || 24000, 
+                                            channels || 1,
+                                            audioType
+                                        );
+                                    } catch (transcriptionError) {
+                                        logger.error(`Error sending ${audioType} audio for transcription:`, transcriptionError);
+                                    }
+                                } else {
+                                    logger.warn(`[WEBRTC DEBUG] No audio data received for call ${callId} (${audioType})`);
+                                }
+
                                 // Broadcast to frontend via Socket.IO for monitoring
                                 this.io.emit('call_audio_' + eventData.callId, {
                                     type: 'audio_stream',
@@ -176,6 +186,10 @@ a=ice-pwd:${this.generateIcePwd()}`
 
             ws.on('close', () => {
                 logger.info('Raw WebSocket Client disconnected:', connectionId);
+                // Stop transcription for this call if it was active
+                if (callId) {
+                    this.transcriptionService.stopTranscription(callId);
+                }
                 this.rawWebSocketConnections.delete(connectionId);
             });
 
@@ -338,6 +352,25 @@ a=ice-pwd:${this.generateIcePwd()}`
                 timestamp: Date.now()
             });
 
+            // Start appropriate transcription session if not already active
+            if (audioType === 'mic' && !this.transcriptionService.isMicTranscriptionActive(callId)) {
+                this.transcriptionService.startMicTranscription(callId);
+                logger.info(`Started mic transcription for call ${callId}`);
+            } else if (audioType === 'speaker' && !this.transcriptionService.isSpeakerTranscriptionActive(callId)) {
+                this.transcriptionService.startSpeakerTranscription(callId);
+                logger.info(`Started speaker transcription for call ${callId}`);
+            }
+
+            // Send audio data for transcription based on audio type
+            if (audioData) {
+                try {
+                    // Send Opus-encoded audio data to appropriate transcription service
+                    this.transcriptionService.sendAudioData(callId, audioData, sampleRate, channels, audioType);
+                } catch (transcriptionError) {
+                    logger.error(`Error sending ${audioType} audio for transcription:`, transcriptionError);
+                }
+            }
+
             // Broadcast to frontend
             socket.emit('call_audio_' + callId, {
                 callId,
@@ -383,11 +416,61 @@ a=ice-pwd:${this.generateIcePwd()}`
         for (const [callId, peerConnection] of this.peerConnections.entries()) {
             try {
                 logger.debug('Cleaned up simplified peer connection:', callId);
+                // Stop transcription for this call
+                this.transcriptionService.stopTranscription(callId);
             } catch (error) {
                 logger.error('Error cleaning up peer connection:', error);
             }
         }
         this.peerConnections.clear();
+    }
+
+    // Emit transcription updates to Socket.IO clients
+    emitTranscriptionUpdate(callId, transcriptionData) {
+        try {
+            // Emit to all clients monitoring this call
+            this.io.emit('transcription_update', {
+                callId,
+                ...transcriptionData
+            });
+            
+            // Also emit to call-specific room
+            this.io.to(`call_monitoring_${callId}`).emit('transcription_update', {
+                callId,
+                ...transcriptionData
+            });
+            
+            // Emit to transcription monitoring room
+            this.io.to(`transcription_monitoring_${callId}`).emit('transcription_update', {
+                callId,
+                ...transcriptionData
+            });
+
+            // Broadcast to raw WebSocket clients (C++ app) using Socket.IO framing
+            // Event name: "transcript"
+            const speaker = transcriptionData.audioType === 'mic' ? 'agent' : 'customer';
+            const payload = {
+                type: 'transcript',
+                callId,
+                speaker,
+                text: transcriptionData.text || '',
+                confidence: typeof transcriptionData.confidence === 'number' ? transcriptionData.confidence : 0.0,
+                timestamp: transcriptionData.timestamp || new Date().toISOString(),
+                language: 'en',
+                duration: typeof transcriptionData.duration === 'number' ? transcriptionData.duration : 0.0,
+            };
+            const socketIoMsg = '42["transcript",' + JSON.stringify(payload) + ']';
+            for (const [, ws] of this.rawWebSocketConnections.entries()) {
+                try {
+                    // Send as a plain text message; ws library will frame it as a text frame (opcode 0x1)
+                    ws.send(socketIoMsg);
+                } catch {}
+            }
+            
+            logger.debug(`Transcription update emitted for call ${callId}:`, transcriptionData);
+        } catch (error) {
+            logger.error(`Error emitting transcription update for call ${callId}:`, error);
+        }
     }
 
     // Method to get WebRTC server instance
@@ -443,42 +526,6 @@ a=ice-pwd:${this.generateIcePwd()}`
         return frame;
     }
     
-    // Send transcript to C++ client via WebSocket
-    sendTranscriptToClient(ws, callId, transcript) {
-        try {
-            logger.debug('sendTranscriptToClient called for call:', callId);
-            
-            if (!ws || ws.readyState !== 1) { // WebSocket.OPEN
-                logger.warn('WebSocket not ready for transcript delivery - readyState:', ws?.readyState);
-                return;
-            }
-            
-            // Create transcript message in Socket.IO format
-            const transcriptMessage = {
-                type: 'transcript',
-                callId: callId,
-                speaker: transcript.speaker,
-                text: transcript.text,
-                confidence: transcript.confidence,
-                timestamp: transcript.timestamp,
-                language: transcript.language,
-                duration: transcript.duration
-            };
-            
-            // Format as Socket.IO event: 42["transcript", data]
-            const message = '42["transcript",' + JSON.stringify(transcriptMessage) + ']';
-            logger.debug('Sending message:', message);
-            
-            // Send via WebSocket as text frame (not binary)
-            logger.debug('Frame length:', message.length);
-            ws.send(message, { binary: false });
-            
-            logger.info('Transcript sent to C++ client:', callId, transcript.speaker, transcript.text.substring(0, 50) + '...');
-            
-        } catch (error) {
-            logger.error('Error sending transcript to C++ client:', error);
-        }
-    }
 }
 
 export default WebRTCServer;

@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import winston from 'winston';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -29,7 +30,6 @@ const consoleFormat = winston.format.combine(
 const logger = winston.createLogger({
   level: process.env.LOG_LEVEL || 'info',
   format: logFormat,
-  defaultMeta: { service: 'call-analysis-api' },
   transports: [
     // Write all logs with importance level of `error` or less to `error.log`
     new winston.transports.File({
@@ -47,12 +47,10 @@ const logger = winston.createLogger({
   ],
 });
 
-// If we're not in production then log to the `console` with the format:
-// `${info.level}: ${info.message} JSON.stringify({ ...rest }) `
-if (process.env.NODE_ENV !== 'production') {
-  logger.add(new winston.transports.Console({
-    format: consoleFormat
-  }));
-}
+// Always log to the console so debug/info/error are visible in all environments
+logger.add(new winston.transports.Console({
+  level: process.env.CONSOLE_LOG_LEVEL || 'debug',
+  format: consoleFormat
+}));
 
 export { logger };

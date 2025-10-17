@@ -63,59 +63,6 @@ router.post('/sentiment', async (req, res) => {
   }
 });
 
-// @route   POST /api/analysis/transcript
-// @desc    Add call transcript
-// @access  Private
-router.post('/transcript', async (req, res) => {
-  try {
-    const { call_id, speaker, text, confidence } = req.body;
-
-    if (!call_id || !speaker || !text) {
-      return res.status(400).json({ message: 'Missing required fields' });
-    }
-
-    // Store transcript data in the call's analysis_data JSONB field
-    const { data: call, error: callError } = await supabase
-      .from('calls')
-      .select('analysis_data')
-      .eq('id', call_id)
-      .single();
-
-    if (callError) {
-      return res.status(404).json({ message: 'Call not found' });
-    }
-
-    const currentAnalysis = call.analysis_data || {};
-    const transcriptData = {
-      timestamp: new Date().toISOString(),
-      speaker,
-      text,
-      confidence: confidence || 1.0
-    };
-
-    const updatedAnalysis = {
-      ...currentAnalysis,
-      transcript: [...(currentAnalysis.transcript || []), transcriptData]
-    };
-
-    const { data: updatedCall, error: updateError } = await supabase
-      .from('calls')
-      .update({ analysis_data: updatedAnalysis })
-      .eq('id', call_id)
-      .select()
-      .single();
-
-    if (updateError) {
-      throw updateError;
-    }
-
-    res.status(201).json({ transcript: transcriptData });
-
-  } catch (error) {
-    logger.error('Add transcript error:', error);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
 
 // @route   POST /api/analysis/audit
 // @desc    Add call audit data

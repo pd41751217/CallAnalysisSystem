@@ -143,35 +143,6 @@ export const setupSocketHandlers = (io) => {
       }
     });
 
-    // Handle transcript update
-    socket.on('transcript_update', async (data) => {
-      try {
-        const { call_id, speaker, text, confidence } = data;
-
-        const transcriptData = {
-          speaker,
-          text,
-          confidence: confidence || 1.0
-        };
-
-        const updatedCall = await CallController.addTranscript(call_id, transcriptData);
-
-        // Emit to all connected clients
-        io.emit('transcript_updated', {
-          call_id,
-          transcript: {
-            timestamp: new Date().toISOString(),
-            ...transcriptData
-          },
-          agent: socket.user
-        });
-
-        logger.info(`Transcript updated via WebSocket: ${call_id} by ${socket.user.email}`);
-      } catch (error) {
-        logger.error('Transcript update error:', error);
-        socket.emit('error', { message: 'Failed to update transcript' });
-      }
-    });
 
     // Handle call event
     socket.on('event', async (data) => {
@@ -292,6 +263,50 @@ export const setupSocketHandlers = (io) => {
       } catch (error) {
         logger.error('Leave dashboard error:', error);
         socket.emit('error', { message: 'Failed to leave dashboard' });
+      }
+    });
+
+    // Handle transcription monitoring request
+    socket.on('join_transcription_monitoring', async (data) => {
+      try {
+        const { callId } = data;
+        
+        // Check if user has permission to monitor transcriptions
+        if (socket.user.role !== 'admin' && socket.user.role !== 'team_lead') {
+          socket.emit('error', { message: 'Access denied. Admin or team lead privileges required.' });
+          return;
+        }
+
+        // Join the transcription monitoring room
+        socket.join(`transcription_monitoring_${callId}`);
+        
+        logger.info(`User ${socket.user.email} joined transcription monitoring: ${callId}`);
+        
+        // Send confirmation
+        socket.emit('transcription_monitoring_joined', { callId });
+        
+      } catch (error) {
+        logger.error('Join transcription monitoring error:', error);
+        socket.emit('error', { message: 'Failed to join transcription monitoring' });
+      }
+    });
+
+    // Handle transcription monitoring leave
+    socket.on('leave_transcription_monitoring', async (data) => {
+      try {
+        const { callId } = data;
+        
+        // Leave the transcription monitoring room
+        socket.leave(`transcription_monitoring_${callId}`);
+        
+        logger.info(`User ${socket.user.email} left transcription monitoring: ${callId}`);
+        
+        // Send confirmation
+        socket.emit('transcription_monitoring_left', { callId });
+        
+      } catch (error) {
+        logger.error('Leave transcription monitoring error:', error);
+        socket.emit('error', { message: 'Failed to leave transcription monitoring' });
       }
     });
 

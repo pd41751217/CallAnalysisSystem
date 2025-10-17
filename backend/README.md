@@ -125,7 +125,6 @@ After running the migration:
 
 ### Analysis
 - `POST /api/analysis/sentiment` - Add sentiment analysis data
-- `POST /api/analysis/transcript` - Add call transcript
 - `POST /api/analysis/audit` - Add call audit data
 - `POST /api/analysis/event` - Add call event
 
@@ -140,7 +139,6 @@ After running the migration:
 - `call_start` - Start a new call
 - `call_end` - End an active call
 - `sentiment_update` - Update sentiment analysis
-- `transcript_update` - Update call transcript
 - `event` - Trigger a call event
 - `status_update` - Update agent status
 
@@ -148,7 +146,6 @@ After running the migration:
 - `call_started` - Call started notification
 - `call_ended` - Call ended notification
 - `sentiment_updated` - Sentiment update notification
-- `transcript_updated` - Transcript update notification
 - `event_triggered` - Event notification
 - `agent_status_updated` - Agent status update
 

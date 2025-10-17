@@ -24,7 +24,6 @@ copy NUL .env
 ```env
 # OpenAI Configuration
 OPENAI_API_KEY=your_actual_openai_api_key_here
-STT_PROVIDER=whisper
 
 # Server Configuration
 PORT=3002
@@ -81,7 +80,6 @@ The server should start on `http://localhost:3002`
 You should see output like:
 ```
 🚀 Server running on port 3002
-✅ STT Service initialized
 ✅ WebRTC Server started
 ```
 
@@ -113,76 +111,19 @@ You should see output like:
 - ✅ **Parallel processing** - 2x throughput
 - ✅ **15-second API timeout** - Faster failures
 
-## 🚀 **Real-time API Support**
 
-The backend now supports OpenAI's Real-time API for ultra-low latency transcription:
-
-| Setting | API Used | Latency | Features |
-|---------|----------|---------|----------|
-| `USE_REALTIME_API=false` | **Whisper API** (default) | 2-4 seconds | File-based, reliable |
-| `USE_REALTIME_API=true` | **Real-time API** | <500ms | Streaming, WebSocket-based |
-
-### **Real-time API Benefits:**
-- ⚡ **Ultra-low latency** (<500ms vs 2-4s)
-- 🔄 **Streaming transcription** - no buffering needed
-- 🎯 **Voice activity detection** - automatic speech detection
-- 📡 **WebSocket connection** - persistent real-time communication
-- 🎤 **Live partial results** - see transcription as you speak
-
-### **Configuration:**
-```env
-# Enable real-time API
-USE_REALTIME_API=true
-
-# Your OpenAI API key (same as Whisper)
-OPENAI_API_KEY=your_actual_openai_api_key_here
-```
-
-## 🎤 **Audio Source Control**
-
-The backend now supports selective audio processing via the `AUDIO_SOURCE` environment variable:
-
-| Value | Audio Source | Display Format |
-|-------|-------------|----------------|
-| `1` | **Mic only** | `[time] [Agent (from mic)] text (confidence%)` |
-| `2` | **Speaker only** | `[time] [Customer (from speaker)] text (confidence%)` |
-| `3` | **Both** (default) | `[time] [Agent (from mic)] text (confidence%)`<br>`[time] [Customer (from speaker)] text (confidence%)` |
-
-### **Example Output:**
-
-**AUDIO_SOURCE=1 (Mic only):**
-```
-[14:30:15] [Agent (from mic)] Hello, how can I help you today? (87.5%)
-[14:30:18] [Agent (from mic)] I understand your concern. (92.1%)
-```
-
-**AUDIO_SOURCE=2 (Speaker only):**
-```
-[14:30:16] [Customer (from speaker)] I need help with my account. (78.3%)
-[14:30:19] [Customer (from speaker)] Thank you for your assistance. (85.7%)
-```
-
-**AUDIO_SOURCE=3 (Both):**
-```
-[14:30:15] [Agent (from mic)] Hello, how can I help you today? (87.5%)
-[14:30:16] [Customer (from speaker)] I need help with my account. (78.3%)
-[14:30:18] [Agent (from mic)] I understand your concern. (92.1%)
-[14:30:19] [Customer (from speaker)] Thank you for your assistance. (85.7%)
-```
 
 ## 📊 **Expected Performance**
 
 - **Processing Speed**: 3-4x faster than before
 - **Memory Usage**: 25% reduction
 - **File Size**: 25% smaller audio files
-- **Response Time**: Sub-second transcript delivery
-- **Selective Processing**: Only process selected audio sources
 
 ## 🎯 **Next Steps**
 
 1. **Start the backend**: `npm run dev`
 2. **Test with C++ client**: Connect RecSendScAu
-3. **Monitor performance**: Check transcript delivery speed
+3. **Monitor performance**: Check system performance
 4. **Adjust settings**: Modify `.env` if needed
 
 ## 📝 **Notes**

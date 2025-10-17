@@ -1,835 +1,456 @@
-// Real-time Speech Transcription Service using OpenAI's Real-time API
-// Based on: https://medium.com/@anirudhgangwal/real-time-speech-transcription-with-openai-and-websockets-76eccf4fe51a
-
 import WebSocket from 'ws';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { logger } from '../utils/logger.js';
+import BackendOpusDecoder from '../utils/opusDecoder.js';
 
-/**
- * Real-time Transcription Service using OpenAI's Real-time API
- * Provides low-latency, streaming transcription via WebSockets
- */
-export class RealtimeTranscriptionService {
-  constructor() {
-    this.connections = new Map(); // callId -> WebSocket connection
-    this.config = {
-      apiKey: process.env.OPENAI_API_KEY,
-      baseUrl: 'wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview',
-      model: 'gpt-4o-realtime-preview',
-      sampleRate: 24000, // OpenAI Real-time API expects 24kHz
-      channels: 1,
-      bitsPerSample: 16,
-      chunkSize: 1024, // Audio chunk size in samples
-      bufferDuration: 200, // Reduced buffer duration for more responsive VAD
-      minBufferDuration: 200 // Minimum buffer duration in ms (200ms for responsive VAD)
-    };
-    
-    // Initialize audio source configuration
-    this.audioSource = this.getAudioSourceConfig();
-    
-    // Initialize audio buffer queues
-    this.audioBuffers = new Map(); // callId -> { mic: [], speaker: [] }
-    
-    // Get max queue size from environment (in milliseconds)
-    this.maxQueueSizeMs = parseInt(process.env.MAX_QUEUE_SIZE_FOR_OPENAI) || 5000; // Default 5000ms
-    
-    // Start background thread to process queues
-    this.startQueueProcessor();
-    
-    
-    // Validate API key
-    if (!this.config.apiKey || this.config.apiKey === 'your_openai_api_key_here') {
-      throw new Error('OPENAI_API_KEY is required for RealtimeTranscriptionService');
-    }
-  }
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
+// Build a 44-byte WAV header for PCM16 LE data
+function buildWavHeader(totalPcmBytes, sampleRate, channels) {
+    const bitsPerSample = 16;
+    const byteRate = sampleRate * channels * (bitsPerSample / 8);
+    const blockAlign = channels * (bitsPerSample / 8);
+    const subchunk2Size = totalPcmBytes;
+    const chunkSize = 36 + subchunk2Size;
 
-  /**
-   * Process audio buffer queue and send to OpenAI
-   * @param {string} callId - Call identifier
-   * @param {string} audioType - Audio type (mic or speaker)
-   * @param {Object} audioConnection - Audio connection object
-   */
-  processBufferQueue(callId, audioType, audioConnection) {
-    const audioBufferQueue = this.audioBuffers.get(callId);
-    if (!audioBufferQueue || !audioBufferQueue[audioType] || audioBufferQueue[audioType].length === 0) {
-      return;
-    }
-
-    // Combine all buffered audio chunks
-    const combinedBuffer = Buffer.concat(audioBufferQueue[audioType]);
-    
-    // Calculate duration
-    const samplesPerSecond = 24000;
-    const bytesPerSample = 2; // 16-bit = 2 bytes
-    const durationMs = (combinedBuffer.length / bytesPerSample / samplesPerSecond) * 1000;
-    
-    // Send combined audio data to OpenAI
-    const audioMessage = {
-      type: 'input_audio_buffer.append',
-      audio: combinedBuffer.toString('base64')
-    };
-    
-    console.log(`📤 Sending buffered audio data for call ${callId}_${audioType}, length=${combinedBuffer.length}, duration=${durationMs}ms`);
-    
-    // audioConnection.ws.send(JSON.stringify(audioMessage));
-        
-    // With server VAD enabled, we don't need to manually commit
-    // The server will automatically commit when it detects speech
-    console.log(`📤 Buffered audio data sent to OpenAI (${combinedBuffer.length} bytes) - server VAD will handle commit`);
-    
-    // Clear the buffer queue after sending - properly clear heap
-    this.clearAudioQueue(audioBufferQueue[audioType]);
-    audioBufferQueue[audioType].length = 0;
-  }
-
-  /**
-   * Start background thread to process audio queues
-   */
-  startQueueProcessor() {
-    // Process queues every 100ms for responsive processing
-    // function repeat() {
-    //   this.processAllQueues();
-    //   setTimeout(repeat, 100);
-    // }
-    setInterval(() => {
-      this.processAllQueues();
-    }, 100);
-  }
-
-  /**
-   * Process all audio queues and send data to OpenAI
-   */
-  processAllQueues() {
-    for (const [callId, audioBufferQueue] of this.audioBuffers.entries()) {
-      // Process both mic and speaker queues
-      for (const audioType of ['mic', 'speaker']) {
-        if (audioBufferQueue[audioType] && audioBufferQueue[audioType].length > 0) {
-          const connectionKey = `${callId}_${audioType}`;
-          const audioConnection = this.connections.get(connectionKey);
-          
-          if (audioConnection && audioConnection.isConnected && audioConnection.isConfigured) {
-            this.processBufferQueue(callId, audioType, audioConnection);
-          }
-        }
-      }
-    }
-  }
-
-  /**
-   * Clear audio queue and free memory
-   * @param {Array} audioQueue - Array of audio buffers to clear
-   */
-  clearAudioQueue(audioQueue) {
-    if (!audioQueue || audioQueue.length === 0) return;
-    
-    // Clear each buffer explicitly to free memory
-    audioQueue.forEach(buffer => {
-      if (buffer && buffer.fill) {
-        buffer.fill(0); // Zero out the buffer
-      }
-    });
-    
-    // Clear the array length
-    audioQueue.length = 0;
-    
-    // Force garbage collection if available
-    if (global.gc) {
-      global.gc();
-    }
-  }
-
-  /**
-   * Get audio source configuration from environment variable
-   * @returns {Object} Audio source configuration
-   */
-  getAudioSourceConfig() {
-    const audioSourceEnv = process.env.AUDIO_SOURCE || '3'; // Default to both
-    const audioSource = parseInt(audioSourceEnv);
-    
-    const config = {
-      mic: false,
-      speaker: false,
-      both: false
-    };
-    
-    switch (audioSource) {
-      case 1:
-        config.mic = true;
-        break;
-      case 2:
-        config.speaker = true;
-        break;
-      case 3:
-        config.both = true;
-        config.mic = true;
-        config.speaker = true;
-        break;
-      default:
-        config.both = true;
-        config.mic = true;
-        config.speaker = true;
-    }
-    
-    logger.info(`Audio source configuration: mic=${config.mic}, speaker=${config.speaker}, both=${config.both}`);
-    return config;
-  }
-
-  /**
-   * Check if audio type should be processed based on AUDIO_SOURCE setting
-   * @param {string} audioType - 'mic' or 'speaker'
-   * @returns {boolean} Whether to process this audio type
-   */
-  shouldProcessAudioType(audioType) {
-    const shouldProcess = (audioType === 'mic' && this.audioSource.mic) || 
-                         (audioType === 'speaker' && this.audioSource.speaker);
-    
-    return shouldProcess;
-  }
-
-  /**
-   * Start real-time transcription for a call
-   * @param {string} callId - Call identifier
-   * @param {Function} onTranscript - Callback for transcript updates
-   * @param {Function} onError - Callback for errors
-   * @param {string} audioType - Audio type (mic or speaker)
-   */
-  async startTranscription(callId, onTranscript, onError, audioType = 'mic') {
-    // Prevent multiple start attempts for the same call
-    if (this.connections.has(callId)) {
-      const existingConnection = this.connections.get(callId);
-      if (existingConnection.isConnected || existingConnection.connectionStartTime) {
-        logger.warn(`Real-time transcription already started for call ${callId}`);
-        return;
-      }
-    }
-
-    try {
-      logger.info(`Starting real-time transcription for call ${callId}`);
-      
-      // Create WebSocket connection to OpenAI Real-time API with better options
-      const ws = new WebSocket(this.config.baseUrl, {
-        headers: {
-          'Authorization': `Bearer ${this.config.apiKey}`,
-          'OpenAI-Beta': 'realtime=v1'
-        },
-        handshakeTimeout: 30000, // 30 second timeout
-        perMessageDeflate: false, // Disable compression for better performance
-        maxPayload: 16 * 1024 * 1024 // 16MB max payload
-      });
-
-      // Store connection and callbacks
-      this.connections.set(callId, {
-        ws,
-        onTranscript,
-        onError,
-        isConnected: false,
-        sessionId: null,
-        isConfigured: false,
-        connectionStartTime: Date.now(),
-        reconnectAttempts: 0,
-        maxReconnectAttempts: 3
-      });
-
-      // No need to initialize audio buffer since we're not accumulating chunks
-
-      // Set up WebSocket event handlers
-      this.setupWebSocketHandlers(callId, ws, onTranscript, onError);
-      
-    } catch (error) {
-      console.error(`❌ Failed to start real-time transcription for call ${callId}:`, error.message);
-      if (onError) onError(error);
-    }
-  }
-
-  /**
-   * Set up WebSocket event handlers
-   * @param {string} callId - Call identifier
-   * @param {WebSocket} ws - WebSocket connection
-   * @param {Function} onTranscript - Transcript callback
-   * @param {Function} onError - Error callback
-   */
-  setupWebSocketHandlers(callId, ws, onTranscript, onError) {
-    const connection = this.connections.get(callId);
-
-    ws.on('open', () => {
-      const connectionTime = Date.now() - connection.connectionStartTime;
-      console.log(`✅ Real-time transcription WebSocket connected for call ${callId} (${connectionTime}ms)`);
-      console.log(`🔗 WebSocket readyState: ${ws.readyState} (1=OPEN)`);
-      connection.isConnected = true;
-      connection.reconnectAttempts = 0; // Reset reconnect attempts on successful connection
-      
-      // Send session configuration immediately after connection
-      setTimeout(() => {
-        this.sendSessionConfig(callId);
-      }, 100);
-    });
-
-    ws.on('message', (data) => {
-      try {
-        const message = JSON.parse(data.toString());
-        console.log(`📨 Received WebSocket message for call ${callId}, type: ${message.type}:`, data.toString().substring(0, 200) + '...');
-        this.handleMessage(callId, message, onTranscript, onError);
-      } catch (error) {
-        console.error(`❌ Error parsing message for call ${callId}:`, error.message);
-        console.error(`❌ Raw message data:`, data.toString().substring(0, 200));
-        // Don't call onError for parsing errors to avoid spam
-      }
-    });
-
-    ws.on('error', (error) => {
-      // Only log significant errors, not connection resets
-      if (error.code !== 'ECONNRESET' && error.code !== 'EPIPE') {
-        console.error(`❌ WebSocket error for call ${callId}:`, error.message);
-      }
-      
-      // Attempt reconnection for certain errors
-      if (this.shouldReconnect(error) && connection.reconnectAttempts < connection.maxReconnectAttempts) {
-        this.attemptReconnect(callId, onTranscript, onError);
-      } else if (onError) {
-        onError(error);
-      }
-    });
-
-    ws.on('close', (code, reason) => {
-      console.log(`🔌 Real-time transcription closed for call ${callId}. Code: ${code}, Reason: ${reason}`);
-      connection.isConnected = false;
-      
-      // Attempt reconnection for unexpected closures
-      if (this.shouldReconnect({ code }) && connection.reconnectAttempts < connection.maxReconnectAttempts) {
-        this.attemptReconnect(callId, onTranscript, onError);
-      } else {
-        this.cleanup(callId);
-      }
-    });
-
-    // Add ping/pong handling for connection health
-    ws.on('ping', () => {
-      ws.pong();
-    });
-  }
-
-  /**
-   * Send session configuration to OpenAI
-   * @param {string} callId - Call identifier
-   */
-  sendSessionConfig(callId) {
-    const connection = this.connections.get(callId);
-    if (!connection || !connection.isConnected) {
-      console.log(`Cannot send config for call ${callId} - not connected`);
-      return;
-    }
-
-    const config = {
-      type: 'session.update',
-      session: {
-        modalities: ['audio', 'text'],
-        instructions: 'You are a real-time speech transcription service. Transcribe the audio accurately and provide timestamps.',
-        voice: 'alloy',
-        input_audio_format: 'pcm16',
-        output_audio_format: 'pcm16',
-        input_audio_transcription: {
-          model: 'whisper-1'
-        },
-        turn_detection: {
-          type: 'server_vad',
-          threshold: 0.5,
-          prefix_padding_ms: 300,
-          silence_duration_ms: 500
-        },
-        tools: [],
-        tool_choice: 'auto',
-        temperature: 0.8,
-        max_response_output_tokens: 4096
-      }
-    };
-
-    console.log(`📤 Sending session config for call ${callId}`);
-    console.log(`📤 WebSocket readyState before sending config: ${connection.ws.readyState}`);
-    connection.ws.send(JSON.stringify(config));
-    console.log(`📤 Session config sent successfully for call ${callId}`);
-  }
-
-  /**
-   * Handle incoming messages from OpenAI
-   * @param {string} callId - Call identifier
-   * @param {Object} message - Message from OpenAI
-   * @param {Function} onTranscript - Transcript callback
-   * @param {Function} onError - Error callback
-   */
-  handleMessage(callId, message, onTranscript, onError) {
-    console.log(`🔍 handleMessage called for call ${callId} with type: ${message.type}`);
-    const connection = this.connections.get(callId);
-    if (!connection) {
-      console.log(`❌ No connection found for call ${callId}`);
-      return;
-    }
-
-    switch (message.type) {
-      case 'session.created':
-        connection.sessionId = message.session.id;
-        console.log(`✅ Session created for call ${callId}`);
-        break;
-
-      case 'session.updated':
-        console.log(`✅ Session configured for call ${callId}`);
-        connection.isConfigured = true;
-        break;
-
-      case 'input_audio_buffer.committed':
-        console.log(`✅ Audio buffer committed for call ${callId}`);
-        // No need to clear buffer since we're not accumulating chunks
-        break;
-
-      case 'conversation.item.created':
-        console.log(`📄 Conversation item created for call ${callId}`);
-        break;
-
-      case 'conversation.item.input_audio_buffer.speech_started':
-        // Reduced logging - only log once per session
-        if (!connection.speechStarted) {
-          console.log(`🎤 Speech detection started for call ${callId}`);
-          connection.speechStarted = true;
-        }
-        break;
-
-      case 'conversation.item.input_audio_buffer.speech_stopped':
-        // Reduced logging
-        break;
-
-      case 'conversation.item.input_audio_transcription.delta':
-        // Handle partial transcription from input audio
-        if (message.delta && message.delta !== '') {
-          const transcriptData = {
-            speaker: callId.includes('_mic') ? 'You' : 'Speaker',
-            text: message.delta,
-            confidence: 0.9,
-            timestamp: new Date().toISOString(),
-            language: 'en',
-            duration: 0,
-            isPartial: true,
-            audioType: callId.includes('_mic') ? 'mic' : 'speaker'
-          };
-          
-          console.log(`📝 Input transcription delta [${transcriptData.audioType}]: ${message.delta}`);
-          if (onTranscript) onTranscript(transcriptData);
-        }
-        break;
-
-      case 'conversation.item.input_audio_transcription.completed':
-        // Handle final transcription from input audio
-        if (message.transcript && message.transcript !== '') {
-          const audioType = callId.includes('_mic') ? 'mic' : 'speaker';
-          const speaker = audioType === 'mic' ? 'You' : 'Speaker';
-          
-          const transcriptData = {
-            speaker: speaker,
-            text: message.transcript,
-            confidence: 0.9,
-            timestamp: new Date().toISOString(),
-            language: 'en',
-            duration: 0,
-            isPartial: false,
-            audioType: audioType
-          };
-          
-          console.log(`✅ Input transcription completed [${audioType}]: ${message.transcript}`);
-          if (onTranscript) onTranscript(transcriptData);
-        } else {
-          console.log(`⚠️ Empty transcription result for call ${callId}`);
-        }
-        break;
-
-      case 'conversation.item.transcript.delta':
-        // Handle partial transcript
-        if (message.delta && message.delta.transcript) {
-          const transcriptData = {
-            speaker: 'agent', // Will be determined by audio source
-            text: message.delta.transcript,
-            confidence: 0.9, // Real-time API doesn't provide confidence
-            timestamp: new Date().toISOString(),
-            language: 'en',
-            duration: 0,
-            isPartial: true
-          };
-          
-          // Only log significant partial transcripts (not every character)
-          if (message.delta.transcript.length > 10) {
-            console.log(`📝 Partial: ${message.delta.transcript.substring(0, 50)}...`);
-          }
-          if (onTranscript) onTranscript(transcriptData);
-        }
-        break;
-
-      case 'conversation.item.transcript.completed':
-        // Handle final transcript
-        if (message.transcript) {
-          // Extract audioType from callId (format: originalCallId_audioType)
-          const audioType = callId.includes('_') ? callId.split('_').pop() : 'mic';
-          const originalCallId = callId.includes('_') ? callId.split('_')[0] : callId;
-          
-          // Determine speaker based on audio type
-          const speaker = audioType === 'mic' ? 'You' : 'Speaker';
-          
-          const transcriptData = {
-            speaker: speaker,
-            text: message.transcript,
-            confidence: 0.9,
-            timestamp: new Date().toISOString(),
-            language: 'en',
-            duration: 0,
-            isPartial: false,
-            audioType: audioType
-          };
-          
-          console.log(`✅ Final transcript [${audioType}]: ${message.transcript}`);
-          
-          // Send transcript to C++ client via speechToTextService
-          if (onTranscript) {
-            onTranscript(transcriptData);
-          }
-        }
-        break;
-
-      case 'error':
-        console.error(`❌ OpenAI Real-time API error for call ${callId}:`, message.error?.message || 'Unknown error');
-        console.error(`❌ Error details:`, JSON.stringify(message.error, null, 2));
-        if (onError) onError(new Error(message.error?.message || 'Unknown error'));
-        break;
-
-      default:
-        // Only log unknown message types once per session
-        if (!connection.unknownMessageLogged) {
-          console.log(`ℹ️ Unhandled message type: ${message.type}`);
-          connection.unknownMessageLogged = true;
-        }
-    }
-  }
-
-  /**
-   * Process audio data for real-time transcription
-   * @param {string} callId - Call identifier
-   * @param {Object} audioData - Audio data object
-   */
-  async processAudioData(callId, audioData) {
-    const { audioType, audioData: encodedAudio, timestamp } = audioData;
-    
-    // Check if this audio type should be processed based on AUDIO_SOURCE setting
-    if (!this.shouldProcessAudioType(audioType)) {
-      console.log(`⏭️ Skipping ${audioType} audio processing due to AUDIO_SOURCE configuration`);
-      return; // Skip processing for this audio type
-    }
-    
-    // Create separate connection key for mic vs speaker
-    const connectionKey = `${callId}_${audioType}`;
-    
-    // Get or create connection for this audio type
-    let audioConnection = this.connections.get(connectionKey);
-    if (!audioConnection) {
-      // Create new connection for this audio type
-      await this.startTranscription(connectionKey, null, null, audioType);
-      audioConnection = this.connections.get(connectionKey);
-    }
-    
-    // Initialize audio buffer for this call if not exists
-    if (!this.audioBuffers.has(callId)) {
-      this.audioBuffers.set(callId, { mic: [], speaker: [] });
-    }
-    
-    const audioBufferQueue = this.audioBuffers.get(callId);
-    
-    if (!audioConnection || !audioConnection.isConnected || !audioConnection.isConfigured) {
-      // Only log once per session to avoid spam
-      if (!audioConnection || !audioConnection.audioProcessingLogged) {
-        console.log(`⚠️ Real-time transcription not ready for call ${connectionKey}`);
-        if (audioConnection) {
-          audioConnection.audioProcessingLogged = true;
-        }
-      }
-      return;
-    }
-    
-    try {
-      // Decode base64 audio data
-      const audioBuffer = Buffer.from(encodedAudio, 'base64');
-      
-      // Convert to PCM16 format if needed
-      const pcm16Buffer = await this.convertToPCM16(audioBuffer, audioData);
-      
-      if (pcm16Buffer.length === 0) {
-        console.log(`⚠️ Skipping empty audio buffer for call ${connectionKey}`);
-        return; // Silent return for empty buffers
-      }
-      
-      // Additional validation - check if buffer has meaningful audio data
-      const hasAudioData = pcm16Buffer.some(byte => byte !== 0);
-      if (!hasAudioData) {
-        console.log(`⚠️ Skipping silent audio buffer for call ${connectionKey}`);
-        return;
-      }
-
-      // Add audio buffer to queue
-      audioBufferQueue[audioType].push(pcm16Buffer);
-      
-      // Calculate current queue duration
-      const samplesPerSecond = 24000;
-      const bytesPerSample = 2; // 16-bit = 2 bytes
-      const totalBytes = audioBufferQueue[audioType].reduce((sum, buffer) => sum + buffer.length, 0);
-      const currentDurationMs = (totalBytes / bytesPerSample / samplesPerSecond) * 1000;
-      
-      // Check if queue size exceeds the maximum limit
-      if (currentDurationMs >= this.maxQueueSizeMs) {
-        console.log(`📦 Queue size exceeded: ${currentDurationMs}ms >= ${this.maxQueueSizeMs}ms - clearing queue`);
-        // Clear the queue when it exceeds the limit - properly clear heap
-        this.clearAudioQueue(audioBufferQueue[audioType]);
-        audioBufferQueue[audioType].length = 0;
-      }
-      // Audio chunk sent successfully
-
-    } catch (error) {
-      console.error(`❌ Error processing audio for call ${callId}:`, error.message);
-      const connection = this.connections.get(connectionKey);
-      if (connection && connection.onError) {
-        connection.onError(error);
-      }
-    }
-  }
-
-  /**
-   * Convert audio buffer to PCM16 format
-   * @param {Buffer} audioBuffer - Input audio buffer
-   * @param {Object} audioInfo - Audio format information
-   * @returns {Buffer} PCM16 audio buffer
-   */
-  async convertToPCM16(audioBuffer, audioInfo) {
-    try {
-      // Check if this looks like Opus audio (small chunks, no explicit encoding)
-      const isLikelyOpus = !audioInfo?.encoding || 
-                          audioInfo.encoding === 'opus' || 
-                          (audioBuffer.length < 100 && audioInfo?.sampleRate === 24000);
-      
-      // For Opus-encoded audio, we need to decode it first
-      if (isLikelyOpus) {
-        
-        // Use opus-decoder package to decode Opus audio
-      const { OpusDecoder } = await import('opus-decoder');
-      
-      const decoder = new OpusDecoder({
-          sampleRate: 24000,  // Opus encoded at 24kHz
-          channels: 1,        // Mono for STT
-        forceStereo: false
-      });
-      
-      await decoder.ready;
-
-        // Decode the Opus data
-        const decodedData = decoder.decodeFrame(audioBuffer);
-        
-        if (decodedData && decodedData.channelData.length > 0) {
-          // Convert Float32Array to Int16Array for PCM16
-          const floatData = decodedData.channelData[0];
-          const int16Data = new Int16Array(floatData.length);
-          
-          for (let i = 0; i < floatData.length; i++) {
-            // Clamp to [-1, 1] and convert to 16-bit integer
-            const sample = Math.max(-1, Math.min(1, floatData[i]));
-            int16Data[i] = Math.round(sample * 32767);
-          }
-          
-          // Audio is already at 24kHz, no resampling needed
-          const resampledData = int16Data;
-          
-          // Clean up decoder
-          if (decoder.reset) {
-            decoder.reset();
-          }
-          
-          return Buffer.from(resampledData.buffer);
-        }
-        
-        // Clean up decoder
-        if (decoder.reset) {
-          decoder.reset();
-        }
-        
-        return Buffer.alloc(0);
-      } else {
-        // Assume the audio is already in PCM16 format
-        return audioBuffer;
-      }
-    } catch (error) {
-      console.error('Error converting audio to PCM16:', error);
-      return Buffer.alloc(0);
-    }
-  }
-
-
-  /**
-   * Stop real-time transcription for a call
-   * @param {string} callId - Call identifier
-   */
-  stopTranscription(callId) {
-    console.log(`🛑 Stopping real-time transcription for call ${callId}`);
-    const connection = this.connections.get(callId);
-    if (connection && connection.ws) {
-      connection.ws.close();
-    }
-    this.cleanup(callId);
-  }
-
-  /**
-   * Clean up resources for a call
-   * @param {string} callId - Call identifier
-   */
-  cleanup(callId) {
-    console.log(`🧹 Cleaning up real-time transcription for call ${callId}`);
-    
-    const connection = this.connections.get(callId);
-    if (connection) {
-      // Clear all timeouts
-      if (connection.timeouts) {
-        connection.timeouts.forEach(timeout => clearTimeout(timeout));
-        connection.timeouts.clear();
-      }
-      
-      // Close WebSocket if still open
-      if (connection.ws && connection.ws.readyState === 1) { // WebSocket.OPEN
-        connection.ws.close();
-      }
-    }
-    
-    // Clear audio buffers for this call - properly clear heap
-    const audioBufferQueue = this.audioBuffers.get(callId);
-    if (audioBufferQueue) {
-      // Clear both mic and speaker queues
-      this.clearAudioQueue(audioBufferQueue.mic);
-      this.clearAudioQueue(audioBufferQueue.speaker);
-    }
-    this.audioBuffers.delete(callId);
-    
-    this.connections.delete(callId);
-  }
-
-  /**
-   * Check if real-time transcription is active for a call
-   * @param {string} callId - Call identifier
-   * @returns {boolean} Whether transcription is active
-   */
-  isActive(callId) {
-    const connection = this.connections.get(callId);
-    return connection && connection.isConnected && connection.isConfigured;
-  }
-
-  /**
-   * Get connection status for a call
-   * @param {string} callId - Call identifier
-   * @returns {Object} Connection status
-   */
-  getStatus(callId) {
-    const connection = this.connections.get(callId);
-    return {
-      isConnected: connection ? connection.isConnected : false,
-      isConfigured: connection ? connection.isConfigured : false,
-      sessionId: connection ? connection.sessionId : null,
-      hasConnection: !!connection,
-      reconnectAttempts: connection ? connection.reconnectAttempts : 0
-    };
-  }
-
-  /**
-   * Check if we should attempt reconnection for an error
-   * @param {Error} error - The error object
-   * @returns {boolean} Whether to attempt reconnection
-   */
-  shouldReconnect(error) {
-    const reconnectableErrors = [
-      'ECONNRESET',
-      'EPIPE', 
-      'ENOTFOUND',
-      'ETIMEDOUT',
-      'ECONNREFUSED'
-    ];
-    
-    const reconnectableCodes = [1006, 1011, 1012]; // WebSocket close codes
-    
-    return reconnectableErrors.includes(error.code) || 
-           reconnectableCodes.includes(error.code);
-  }
-
-  /**
-   * Attempt to reconnect a WebSocket connection
-   * @param {string} callId - Call identifier
-   * @param {Function} onTranscript - Transcript callback
-   * @param {Function} onError - Error callback
-   */
-  async attemptReconnect(callId, onTranscript, onError) {
-    const connection = this.connections.get(callId);
-    if (!connection) return;
-
-    connection.reconnectAttempts++;
-    const delay = Math.min(1000 * Math.pow(2, connection.reconnectAttempts), 10000); // Exponential backoff, max 10s
-    
-    console.log(`🔄 Attempting reconnection ${connection.reconnectAttempts}/${connection.maxReconnectAttempts} for call ${callId} in ${delay}ms`);
-    
-    setTimeout(async () => {
-      try {
-        // Close existing connection if still open
-        if (connection.ws && connection.ws.readyState === WebSocket.OPEN) {
-          connection.ws.close();
-        }
-        
-        // Start new connection
-        await this.startTranscription(callId, onTranscript, onError);
-      } catch (error) {
-        console.error(`❌ Reconnection failed for call ${callId}:`, error.message);
-        if (connection.reconnectAttempts >= connection.maxReconnectAttempts) {
-          if (onError) onError(error);
-        }
-      }
-    }, delay);
-  }
-
-  /**
-   * Test WebSocket connection to OpenAI Real-time API
-   * @returns {Promise<boolean>} Whether connection test was successful
-   */
-  async testConnection() {
-    return new Promise((resolve) => {
-      console.log('🧪 Testing WebSocket connection to OpenAI Real-time API...');
-      
-      const testWs = new WebSocket(this.config.baseUrl, {
-        headers: {
-          'Authorization': `Bearer ${this.config.apiKey}`,
-          'OpenAI-Beta': 'realtime=v1'
-        },
-        handshakeTimeout: 10000
-      });
-
-      const timeout = setTimeout(() => {
-        console.log('⏰ Connection test timeout');
-        testWs.close();
-        resolve(false);
-      }, 10000);
-
-      testWs.on('open', () => {
-        console.log('✅ Connection test successful');
-        clearTimeout(timeout);
-        testWs.close();
-        resolve(true);
-      });
-
-      testWs.on('error', (error) => {
-        console.error('❌ Connection test failed:', error.message);
-        clearTimeout(timeout);
-        resolve(false);
-      });
-
-      testWs.on('close', (code, reason) => {
-        console.log(`🔌 Test connection closed. Code: ${code}, Reason: ${reason}`);
-        clearTimeout(timeout);
-      });
-    });
-  }
+    const buffer = Buffer.alloc(44);
+    // RIFF chunk descriptor
+    buffer.write('RIFF', 0);                                  // ChunkID
+    buffer.writeUInt32LE(chunkSize, 4);                        // ChunkSize
+    buffer.write('WAVE', 8);                                   // Format
+    // fmt subchunk
+    buffer.write('fmt ', 12);                                  // Subchunk1ID
+    buffer.writeUInt32LE(16, 16);                              // Subchunk1Size (16 for PCM)
+    buffer.writeUInt16LE(1, 20);                               // AudioFormat (1 = PCM)
+    buffer.writeUInt16LE(channels, 22);                        // NumChannels
+    buffer.writeUInt32LE(sampleRate, 24);                      // SampleRate
+    buffer.writeUInt32LE(byteRate, 28);                        // ByteRate
+    buffer.writeUInt16LE(blockAlign, 32);                      // BlockAlign
+    buffer.writeUInt16LE(bitsPerSample, 34);                   // BitsPerSample
+    // data subchunk
+    buffer.write('data', 36);                                  // Subchunk2ID
+    buffer.writeUInt32LE(subchunk2Size, 40);                   // Subchunk2Size
+    return buffer;
 }
 
-// Export singleton instance
-export const realtimeTranscriptionService = new RealtimeTranscriptionService();
+class RealtimeTranscriptionService {
+    constructor() {
+        this.activeSessions = new Map(); // callId -> session info
+        this.openaiConnections = new Map(); // callId -> OpenAI WebSocket
+        this.micTranscriptionSessions = new Map(); // callId -> mic transcription session
+        this.speakerTranscriptionSessions = new Map(); // callId -> speaker transcription session
+        this.opusDecoder = new BackendOpusDecoder();
+    }
+
+    // Connect to OpenAI Realtime API for a specific call and audio type
+    connectRealtimeSession(callId, audioType = 'mic') {
+        const model = process.env.OPENAI_REALTIME_MODEL || 'gpt-realtime';
+        const url = `wss://api.openai.com/v1/realtime?model=${encodeURIComponent(model)}`;
+
+        const openaiWs = new WebSocket(url, {
+            headers: {
+                Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+                'OpenAI-Beta': 'realtime=v1',
+            },
+        });
+
+        // Store connection based on audio type
+        if (audioType === 'mic') {
+            this.micTranscriptionSessions.set(callId, openaiWs);
+        } else if (audioType === 'speaker') {
+            this.speakerTranscriptionSessions.set(callId, openaiWs);
+        }
+
+        openaiWs.on('open', () => {
+            logger.info(`OpenAI Realtime connection opened for call ${callId} (${audioType})`);
+            this.configureSession(callId, openaiWs, audioType);
+        });
+
+        openaiWs.on('message', (data) => {
+            this.handleOpenAIResponse(callId, data, audioType);
+        });
+
+        openaiWs.on('close', () => {
+            logger.info(`OpenAI Realtime connection closed for call ${callId} (${audioType})`);
+            if (audioType === 'mic') {
+                this.micTranscriptionSessions.delete(callId);
+            } else if (audioType === 'speaker') {
+                this.speakerTranscriptionSessions.delete(callId);
+            }
+        });
+
+        openaiWs.on('error', (error) => {
+            logger.error(`OpenAI Realtime error for call ${callId} (${audioType}):`, error);
+            if (audioType === 'mic') {
+                this.micTranscriptionSessions.delete(callId);
+            } else if (audioType === 'speaker') {
+                this.speakerTranscriptionSessions.delete(callId);
+            }
+        });
+
+        return openaiWs;
+    }
+
+    // Configure the OpenAI session for transcription
+    configureSession(callId, openaiWs, audioType = 'mic') {
+        const language = process.env.TRANSCRIPTION_LANGUAGE || 'en';
+        const transcriptionModel = process.env.TRANSCRIPTION_MODEL || 'gpt-4o-transcribe';
+        const vadThreshold = Number(process.env.VAD_THRESHOLD || 0.5);
+        const vadPrefixPaddingMs = Number(process.env.VAD_PREFIX_PADDING_MS || 300);
+        const vadSilenceDurationMs = Number(process.env.VAD_SILENCE_DURATION_MS || 500);
+        const rate = Number(process.env.AUDIO_RATE || 24000);
+
+        // Use clean transcription prompt without descriptive text
+        const audioTypePrompt = process.env.TRANSCRIPTION_PROMPT || 'Transcribe the speech accurately.';
+
+        const sessionUpdate = {
+            type: 'session.update',
+            session: {
+                // Configure transcription-only behavior
+                model: transcriptionModel,
+                input_audio_format: 'pcm16',
+                input_audio_transcription: {
+                    model: transcriptionModel,
+                    language: 'en',
+                    prompt: audioTypePrompt
+                },
+                turn_detection: process.env.VAD_ENABLED === 'false' ? null : {
+                    type: 'server_vad',
+                    threshold: vadThreshold,
+                    prefix_padding_ms: vadPrefixPaddingMs,
+                    silence_duration_ms: vadSilenceDurationMs,
+                }
+            }
+        };
+
+        this.safeSend(openaiWs, JSON.stringify(sessionUpdate));
+        logger.info(`Session configured for call ${callId} (${audioType})`);
+    }
+
+    // Handle OpenAI responses and extract transcription
+    handleOpenAIResponse(callId, data, audioType = 'mic') {
+        try {
+            const response = JSON.parse(data.toString());
+            
+            if (response.type === 'conversation.item.input_audio_buffer.speech_started') {
+                logger.info(`Speech started for call ${callId} (${audioType})`);
+            } else if (response.type === 'conversation.item.input_audio_buffer.speech_stopped') {
+                logger.info(`Speech stopped for call ${callId} (${audioType})`);
+            } else if (response.type === 'conversation.item.input_audio_transcription.delta') {
+                // Handle partial transcription
+                if (response.delta) {
+                    logger.debug(`[TRANSCRIPTION] Call ${callId} (${audioType}): ${response.delta}`);
+                    // Emit partial transcription with audio type
+                    // this.emitTranscriptionUpdate(callId, {
+                    //     type: 'partial',
+                    //     text: response.delta,
+                    //     audioType: audioType,
+                    //     timestamp: new Date().toISOString()
+                    // });
+                }
+            } else if (response.type === 'conversation.item.input_audio_transcription.completed') {
+                // Handle completed transcription
+                if (response.transcript) {
+                    logger.info(`[FINAL TRANSCRIPT] Call ${callId} (${audioType}): ${response.transcript}`);
+                    // Emit final transcription with audio type
+                    this.emitTranscriptionUpdate(callId, {
+                        type: 'final',
+                        text: response.transcript,
+                        audioType: audioType,
+                        timestamp: new Date().toISOString()
+                    });
+                }
+            } else if (response.type === 'error') {
+                logger.error(`OpenAI error for call ${callId} (${audioType}):`, response.error);
+            }
+        } catch (error) {
+            logger.error(`Error parsing OpenAI response for call ${callId} (${audioType}):`, error);
+        }
+    }
+
+    // Emit transcription updates (to be implemented with Socket.IO integration)
+    emitTranscriptionUpdate(callId, transcriptionData) {
+        // This will be called by the WebRTC server to emit to clients
+        // The actual emission will be handled by the WebRTC server
+        logger.debug(`Transcription update for call ${callId}:`, transcriptionData);
+    }
+
+    // Send audio data to OpenAI for transcription
+    async sendAudioData(callId, audioData, sampleRate = 24000, channels = 1, audioType = 'mic') {
+        let openaiWs;
+        
+        // Get the appropriate WebSocket connection based on audio type
+        if (audioType === 'mic') {
+            openaiWs = this.micTranscriptionSessions.get(callId);
+        } else if (audioType === 'speaker') {
+            openaiWs = this.speakerTranscriptionSessions.get(callId);
+        }
+        
+        if (!openaiWs || openaiWs.readyState !== WebSocket.OPEN) {
+            logger.warn(`No active OpenAI connection for call ${callId} (${audioType})`);
+            return;
+        }
+
+        try {
+            // Initialize Opus decoder if not already done (per stream)
+            await this.opusDecoder.initializeDecoder(callId, sampleRate, channels, audioType);
+            
+            // Convert base64 audio data to buffer
+            let opusBuffer;
+            if (typeof audioData === 'string') {
+                opusBuffer = Buffer.from(audioData, 'base64');
+            } else if (Buffer.isBuffer(audioData)) {
+                opusBuffer = audioData;
+            } else if (audioData instanceof Uint8Array) {
+                opusBuffer = Buffer.from(audioData);
+            } else {
+                logger.error(`Unsupported audio data type: ${typeof audioData}`);
+                return;
+            }
+            
+            // Decode Opus data to PCM (per stream)
+            const pcmData = await this.opusDecoder.decodeOpusData(callId, opusBuffer, audioType);
+            if (!pcmData) {
+                logger.warn(`[AUDIO DEBUG] No PCM data decoded for call ${callId} (${audioType})`);
+                return;
+            }
+            
+            // Ensure 16-bit alignment
+            if (pcmData.length % 2 !== 0) {
+                logger.warn(`PCM buffer length not 16-bit aligned for call ${callId}. Buffer Length: ${pcmData.length}`);
+                return;
+            }
+
+            // Optionally save outgoing PCM to WAV file for debugging
+            if (process.env.DEBUG_SAVE_OUTGOING_AUDIO === 'true') {
+                try {
+                    const session = this.activeSessions.get(callId) || {};
+                    // Prepare debug directory and file path once per call
+                    if (!session.debugAudioInitialized) {
+                        const debugDir = path.join(__dirname, '../../uploads/audio/debug');
+                        if (!fs.existsSync(debugDir)) {
+                            fs.mkdirSync(debugDir, { recursive: true });
+                        }
+                        const debugFilePath = path.join(debugDir, `outgoing_call_${callId}.wav`);
+                        // If file exists from a previous run, remove it to start fresh
+                        if (fs.existsSync(debugFilePath)) {
+                            try { fs.unlinkSync(debugFilePath); } catch {}
+                        }
+                        // Write placeholder WAV header (sizes will be fixed on finalize)
+                        // We record mono (first channel only) in the WAV
+                        const wavChannels = 1;
+                        const placeholderHeader = buildWavHeader(0, sampleRate, wavChannels);
+                        fs.writeFileSync(debugFilePath, placeholderHeader);
+
+                        session.debugAudioInitialized = true;
+                        session.debugAudioPath = debugFilePath;
+                        session.debugBytesWritten = 0;
+                        session.debugSampleRate = sampleRate;
+                        session.debugChannels = 1;
+                        this.activeSessions.set(callId, session);
+                        logger.info(`Debug audio capture (WAV) enabled for call ${callId}: ${debugFilePath} (${sampleRate}Hz, 1ch, PCM16)`);
+                    }
+                    if (session.debugAudioPath) {
+                        const pcmBuffer = Buffer.from(pcmData.buffer, pcmData.byteOffset, pcmData.byteLength);
+                        fs.appendFile(session.debugAudioPath, pcmBuffer, (err) => {
+                            if (err) {
+                                logger.error(`Failed appending debug audio for call ${callId}:`, err);
+                            }
+                        });
+                        session.debugBytesWritten = (session.debugBytesWritten || 0) + pcmBuffer.length;
+                        this.activeSessions.set(callId, session);
+                    }
+                } catch (dbgErr) {
+                    logger.error(`Error during debug audio saving for call ${callId}:`, dbgErr);
+                }
+            }
+
+            // Convert to base64 using the exact typed array slice
+            const base64 = Buffer.from(pcmData.buffer, pcmData.byteOffset, pcmData.byteLength).toString('base64');
+            if (base64.length === 0) {
+                logger.warn(`[AUDIO DEBUG] Empty base64 data for call ${callId} (${audioType})`);
+                return;
+            }
+
+            // Wrap audio chunk into input_audio_buffer.append event
+            const evt = {
+                type: 'input_audio_buffer.append',
+                audio: base64,
+            };
+
+            const msg = JSON.stringify(evt);
+            this.safeSend(openaiWs, msg);
+        } catch (error) {
+            logger.error(`Error sending audio data for call ${callId}:`, error);
+        }
+    }
+
+    // Commit the current audio buffer (end of turn)
+    commitAudioBuffer(callId, audioType = 'mic') {
+        let openaiWs;
+        
+        if (audioType === 'mic') {
+            openaiWs = this.micTranscriptionSessions.get(callId);
+        } else if (audioType === 'speaker') {
+            openaiWs = this.speakerTranscriptionSessions.get(callId);
+        }
+         
+        if (!openaiWs || openaiWs.readyState !== WebSocket.OPEN) {
+            return;
+        }
+
+        const commitMsg = JSON.stringify({ type: 'input_audio_buffer.commit' });
+        this.safeSend(openaiWs, commitMsg);
+        logger.debug(`Audio buffer committed for call ${callId} (${audioType})`);
+    }
+
+    // Start transcription for a call (legacy method - now starts both mic and speaker)
+    startTranscription(callId) {
+        if (this.activeSessions.has(callId)) {
+            logger.warn(`Transcription already active for call ${callId}`);
+            return;
+        }
+
+        logger.info(`Starting transcription for call ${callId}`);
+        this.startSpeakerTranscription(callId);
+        this.startMicTranscription(callId);
+        
+        this.activeSessions.set(callId, {
+            callId,
+            startTime: Date.now(),
+            micActive: true,
+            speakerActive: true
+        });
+    }
+
+    // Start microphone transcription for a call
+    startMicTranscription(callId) {
+        if (this.micTranscriptionSessions.has(callId)) {
+            logger.warn(`Mic transcription already active for call ${callId}`);
+            return;
+        }
+
+        logger.info(`Starting mic transcription for call ${callId}`);
+        this.connectRealtimeSession(callId, 'mic');
+    }
+
+    // Start speaker transcription for a call
+    startSpeakerTranscription(callId) {
+        if (this.speakerTranscriptionSessions.has(callId)) {
+            logger.warn(`Speaker transcription already active for call ${callId}`);
+            return;
+        }
+
+        logger.info(`Starting speaker transcription for call ${callId}`);
+        this.connectRealtimeSession(callId, 'speaker');
+    }
+
+    // Stop transcription for a call (legacy method - stops both mic and speaker)
+    stopTranscription(callId) {
+        const session = this.activeSessions.get(callId);
+        if (!session) {
+            logger.warn(`No active transcription session for call ${callId}`);
+            return;
+        }
+
+        logger.info(`Stopping transcription for call ${callId}`);
+        
+        // Stop both mic and speaker transcription
+        this.stopMicTranscription(callId);
+        this.stopSpeakerTranscription(callId);
+
+        // Cleanup Opus decoder
+        this.opusDecoder.cleanupDecoder(callId);
+
+        // Finalize WAV header if debug capture was enabled
+        try {
+            if (session.debugAudioPath && typeof session.debugBytesWritten === 'number') {
+                const totalBytes = session.debugBytesWritten;
+                const header = buildWavHeader(totalBytes, session.debugSampleRate || 24000, session.debugChannels || 1);
+                const fd = fs.openSync(session.debugAudioPath, 'r+');
+                fs.writeSync(fd, header, 0, 44, 0);
+                fs.closeSync(fd);
+                logger.info(`Finalized WAV debug file for call ${callId}: ${session.debugAudioPath} (${totalBytes} bytes of PCM)`);
+            }
+        } catch (finalizeErr) {
+            logger.error(`Failed to finalize WAV debug file for call ${callId}:`, finalizeErr);
+        }
+
+        this.activeSessions.delete(callId);
+    }
+
+    // Stop microphone transcription for a call
+    stopMicTranscription(callId) {
+        const micWs = this.micTranscriptionSessions.get(callId);
+        if (!micWs) {
+            logger.warn(`No active mic transcription session for call ${callId}`);
+            return;
+        }
+
+        logger.info(`Stopping mic transcription for call ${callId}`);
+        
+        // Commit final audio buffer
+        this.commitAudioBuffer(callId, 'mic');
+        
+        // Close OpenAI connection
+        micWs.close();
+        this.micTranscriptionSessions.delete(callId);
+    }
+
+    // Stop speaker transcription for a call
+    stopSpeakerTranscription(callId) {
+        const speakerWs = this.speakerTranscriptionSessions.get(callId);
+        if (!speakerWs) {
+            logger.warn(`No active speaker transcription session for call ${callId}`);
+            return;
+        }
+
+        logger.info(`Stopping speaker transcription for call ${callId}`);
+        
+        // Commit final audio buffer
+        this.commitAudioBuffer(callId, 'speaker');
+        
+        // Close OpenAI connection
+        speakerWs.close();
+        this.speakerTranscriptionSessions.delete(callId);
+    }
+
+    // Check if transcription is active for a call
+    isTranscriptionActive(callId) {
+        return this.activeSessions.has(callId);
+    }
+
+    // Check if mic transcription is active for a call
+    isMicTranscriptionActive(callId) {
+        return this.micTranscriptionSessions.has(callId);
+    }
+
+    // Check if speaker transcription is active for a call
+    isSpeakerTranscriptionActive(callId) {
+        return this.speakerTranscriptionSessions.has(callId);
+    }
+
+    // Safe send helper
+    safeSend(ws, data) {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(data);
+        }
+    }
+
+    // Cleanup all sessions
+    cleanup() {
+        for (const [callId, session] of this.activeSessions.entries()) {
+            this.stopTranscription(callId);
+        }
+        this.activeSessions.clear();
+        this.openaiConnections.clear();
+        this.micTranscriptionSessions.clear();
+        this.speakerTranscriptionSessions.clear();
+        this.opusDecoder.cleanup();
+    }
+}
+
+export default RealtimeTranscriptionService;

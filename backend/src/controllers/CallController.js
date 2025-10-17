@@ -143,36 +143,6 @@ export class CallController {
     }
   }
 
-  static async addTranscript(callId, transcriptData) {
-    try {
-      // Get existing call by call_id (string) not id (integer)
-      const call = await Call.findByCallId(callId);
-      if (!call) {
-        throw new Error('Call not found');
-      }
-
-      // Get current analysis data
-      const currentAnalysis = call.analysis_data || {};
-      
-      // Add transcript data
-      const newTranscriptData = {
-        timestamp: new Date().toISOString(),
-        ...transcriptData
-      };
-
-      const updatedAnalysis = {
-        ...currentAnalysis,
-        transcript: [...(currentAnalysis.transcript || []), newTranscriptData]
-      };
-
-      // Update call with new analysis data
-      const updatedCall = await Call.updateAnalysisDataByCallId(callId, updatedAnalysis);
-      return updatedCall;
-    } catch (error) {
-      logger.error('Add transcript error:', error);
-      throw error;
-    }
-  }
 
   static async addEvent(callId, eventData) {
     try {

@@ -12,7 +12,8 @@ import {
   Chip,
   CircularProgress,
   Alert,
-
+  Tabs,
+  Tab,
 } from '@mui/material';
 import {
   SentimentSatisfied as PositiveIcon,
@@ -21,10 +22,11 @@ import {
   QuestionAnswer as QuestionIcon,
   Warning as WarningIcon,
   Event as EventIcon,
-
+  RecordVoiceOver as TranscriptionIcon,
 } from '@mui/icons-material';
 import { useSocket } from '../../contexts/SocketContext';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import TranscriptionDisplay from '../../components/TranscriptionDisplay';
 
 interface SentimentData {
   id: string;
@@ -76,6 +78,8 @@ const LiveCallAnalysis: React.FC = () => {
   const [events, setEvents] = useState<EventData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [activeTab, setActiveTab] = useState(0);
+  const [currentCallId, setCurrentCallId] = useState<string | null>(null);
   const { socket } = useSocket();
 
   useEffect(() => {
@@ -86,6 +90,7 @@ const LiveCallAnalysis: React.FC = () => {
       socket.on('question_detected', handleQuestionDetected);
       socket.on('vulnerability_detected', handleVulnerabilityDetected);
       socket.on('event_triggered', handleEventTriggered);
+      socket.on('transcription_update', handleTranscriptionUpdate);
     }
 
     return () => {
@@ -94,6 +99,7 @@ const LiveCallAnalysis: React.FC = () => {
         socket.off('question_detected');
         socket.off('vulnerability_detected');
         socket.off('event_triggered');
+        socket.off('transcription_update');
       }
     };
   }, [socket]);
@@ -124,6 +130,17 @@ const LiveCallAnalysis: React.FC = () => {
 
   const handleEventTriggered = (data: EventData) => {
     setEvents(prev => [data, ...prev.slice(0, 49)]); // Keep last 50
+  };
+
+  const handleTranscriptionUpdate = (data: any) => {
+    // Set the current call ID if not already set
+    if (!currentCallId && data.callId) {
+      setCurrentCallId(data.callId);
+    }
+  };
+
+  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
+    setActiveTab(newValue);
   };
 
   const getSentimentIcon = (sentiment: string) => {
@@ -184,6 +201,16 @@ const LiveCallAnalysis: React.FC = () => {
       </Typography>
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+
+      <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
+        <Tabs value={activeTab} onChange={handleTabChange}>
+          <Tab label="Analysis Dashboard" icon={<EventIcon />} />
+          <Tab label="Live Transcription" icon={<TranscriptionIcon />} />
+        </Tabs>
+      </Box>
+
+      {activeTab === 0 && (
+        <Box>
 
       <Grid container spacing={3}>
         {/* Real-time Sentiment Trends */}
@@ -459,6 +486,30 @@ const LiveCallAnalysis: React.FC = () => {
           </Card>
         </Grid>
       </Grid>
+        </Box>
+      )}
+
+      {activeTab === 1 && (
+        <Box>
+          {currentCallId ? (
+            <TranscriptionDisplay 
+              callId={currentCallId} 
+              onTranscriptionUpdate={handleTranscriptionUpdate}
+            />
+          ) : (
+            <Card>
+              <CardContent>
+                <Typography variant="h6" color="textSecondary" align="center">
+                  No active call detected
+                </Typography>
+                <Typography variant="body2" color="textSecondary" align="center">
+                  Transcription will appear here when a call is active
+                </Typography>
+              </CardContent>
+            </Card>
+          )}
+        </Box>
+      )}
     </Box>
   );
 };
