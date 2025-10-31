@@ -105,7 +105,7 @@ m=audio 9 RTP/AVP 111\r
 c=IN IP4 0.0.0.0\r
 a=mid:0\r
 a=recvonly\r
-        a=rtpmap:111 opus/24000/2\r
+        a=rtpmap:111 opus/48000/2\r
 a=fmtp:111 minptime=10;useinbandfec=1\r
 a=rtcp:9 IN IP4 0.0.0.0\r
 a=ice-ufrag:${this.generateIceUfrag()}\r
@@ -140,7 +140,7 @@ a=ice-pwd:${this.generateIcePwd()}`
                                         this.transcriptionService.sendAudioData(
                                             callId, 
                                             audioData, 
-                                            sampleRate || 24000, 
+                                            sampleRate || 48000, 
                                             channels || 1,
                                             audioType
                                         );
@@ -157,7 +157,7 @@ a=ice-pwd:${this.generateIcePwd()}`
                                     callId: eventData.callId,
                                     audioData: eventData.audioData,
                                     audioType: eventData.audioType,
-                                    sampleRate: eventData.sampleRate || 24000,
+                                    sampleRate: eventData.sampleRate || 48000,
                                     bitsPerSample: eventData.bitsPerSample,
                                     channels: eventData.channels,
                                     timestamp: eventData.timestamp
@@ -227,12 +227,6 @@ a=ice-pwd:${this.generateIcePwd()}`
                 this.handleIceCandidate(socket, data);
             });
 
-            // Handle audio stream from C++ client
-            socket.on('audio_stream', (data) => {
-                logger.info('Received audio stream from C++ client:', data.callId);
-                this.handleAudioStream(socket, data);
-            });
-
             // Handle call monitoring request
             socket.on('request_call_monitoring', (data) => {
                 logger.info('Call monitoring requested:', data.callId);
@@ -279,7 +273,7 @@ m=audio 9 RTP/AVP 111\r
 c=IN IP4 0.0.0.0\r
 a=mid:0\r
 a=recvonly\r
-        a=rtpmap:111 opus/24000/2\r
+        a=rtpmap:111 opus/48000/2\r
 a=fmtp:111 minptime=10;useinbandfec=1\r
 a=rtcp:9 IN IP4 0.0.0.0\r
 a=ice-ufrag:${this.generateIceUfrag()}\r
@@ -331,60 +325,6 @@ a=ice-pwd:${this.generateIcePwd()}`
             socket.emit('ice_candidate_ack', { callId, candidate });
         } catch (error) {
             logger.error('Error handling ICE candidate:', error);
-        }
-    }
-
-    handleAudioStream(socket, data) {
-        try {
-            const { callId, audioData, audioType, sampleRate, bitsPerSample, channels } = data;
-            
-            // Store audio stream data
-            if (!this.audioStreams.has(callId)) {
-                this.audioStreams.set(callId, { mic: [], speaker: [] });
-            }
-            
-            const streamData = this.audioStreams.get(callId);
-            streamData[audioType].push({
-                audioData,
-                sampleRate,
-                bitsPerSample,
-                channels,
-                timestamp: Date.now()
-            });
-
-            // Start appropriate transcription session if not already active
-            if (audioType === 'mic' && !this.transcriptionService.isMicTranscriptionActive(callId)) {
-                this.transcriptionService.startMicTranscription(callId);
-                logger.info(`Started mic transcription for call ${callId}`);
-            } else if (audioType === 'speaker' && !this.transcriptionService.isSpeakerTranscriptionActive(callId)) {
-                this.transcriptionService.startSpeakerTranscription(callId);
-                logger.info(`Started speaker transcription for call ${callId}`);
-            }
-
-            // Send audio data for transcription based on audio type
-            if (audioData) {
-                try {
-                    // Send Opus-encoded audio data to appropriate transcription service
-                    this.transcriptionService.sendAudioData(callId, audioData, sampleRate, channels, audioType);
-                } catch (transcriptionError) {
-                    logger.error(`Error sending ${audioType} audio for transcription:`, transcriptionError);
-                }
-            }
-
-            // Broadcast to frontend
-            socket.emit('call_audio_' + callId, {
-                callId,
-                audioType,
-                audioData,
-                sampleRate,
-                bitsPerSample,
-                channels,
-                timestamp: Date.now()
-            });
-
-            logger.debug('Audio stream broadcasted:', callId, audioType);
-        } catch (error) {
-            logger.error('Error handling audio stream:', error);
         }
     }
 

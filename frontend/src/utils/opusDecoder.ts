@@ -13,7 +13,7 @@ export class OpusDecoder {
   private sampleRate: number;
   private channels: number;
   
-  constructor(audioContext: AudioContext, sampleRate: number = 24000, channels: number = 1) {
+  constructor(audioContext: AudioContext, sampleRate: number = 48000, channels: number = 1) {
     this.audioContext = audioContext;
     this.sampleRate = sampleRate;
     this.channels = channels;
@@ -40,20 +40,16 @@ export class OpusDecoder {
   
   // Simplified Opus decoding (placeholder implementation)
   private simplifiedOpusDecode(opusData: Uint8Array): Float32Array {
-    // This is a placeholder implementation
-    // In a real scenario, you would:
-    // 1. Use a WebAssembly Opus decoder
-    // 2. Or send the Opus data to a server for decoding
-    // 3. Or use a native browser API if available
+    // This is a placeholder implementation that matches C++ frame size
+    // C++ uses MAX_FRAME_SIZE = 6*960 = 5760 samples for Opus decoding
+    // At 48kHz, this represents 120ms of audio (5760/48000 = 0.12s)
     
-    // For now, we'll create a simple audio buffer from the Opus data
-    // This is not proper decoding, but it allows us to test the pipeline
-    
-    const frameSize = 480; // 10ms at 48kHz
-    const decodedSamples = new Float32Array(frameSize);
+    const maxFrameSize = 5760; // Match C++ MAX_FRAME_SIZE
+    const decodedSamples = new Float32Array(maxFrameSize);
     
     // Simple conversion: use the first few bytes as audio samples
-    for (let i = 0; i < Math.min(frameSize, opusData.length); i++) {
+    // This is not proper Opus decoding, but maintains frame size consistency
+    for (let i = 0; i < Math.min(maxFrameSize, opusData.length); i++) {
       // Convert byte to float sample (-1 to 1)
       decodedSamples[i] = (opusData[i] - 128) / 128.0;
     }

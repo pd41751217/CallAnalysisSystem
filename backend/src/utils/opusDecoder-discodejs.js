@@ -1,4 +1,5 @@
-import { OpusDecoder } from 'opus-decoder';
+import opus from '@discordjs/opus';
+const { OpusEncoder } = opus;
 import { logger } from './logger.js';
 
 class BackendOpusDecoder {
@@ -6,7 +7,7 @@ class BackendOpusDecoder {
         this.decoders = new Map(); // key (callId:audioType) -> decoder instance
     }
 
-    // Initialize decoder for a call
+    // Initialize decoder for a call (using @discordjs/opus OpusEncoder.decode)
     async initializeDecoder(callId, sampleRate = 48000, channels = 1, audioType = 'mic') {
         try {
             const key = `${callId}:${audioType}`;
@@ -15,19 +16,11 @@ class BackendOpusDecoder {
                 return;
             }
 
-            const decoder = new OpusDecoder({
-                sampleRate,
-                channels,
-                preSkip: 0,
-                streamCount: 1,       // Optional: number of streams
-                coupledStreamCount: 1, // Optional: number of coupled st
-            });
-
-            // Wait for decoder to be ready
-            await decoder.ready;
+            // OpusEncoder provides a decode(opusFrame) method as well
+            const decoder = new OpusEncoder(sampleRate, channels);
             
             this.decoders.set(key, decoder);
-            logger.debug(`Opus decoder initialized for call ${callId} (${audioType}) - SampleRate: ${sampleRate}, Channels: ${channels}`);
+            logger.debug(`@discordjs/opus decoder initialized for call ${callId} (${audioType}) - SampleRate: ${sampleRate}, Channels: ${channels}`);
         } catch (error) {
             logger.error(`Error initializing Opus decoder for call ${callId}:`, error);
         }
@@ -48,19 +41,23 @@ class BackendOpusDecoder {
                 }
             }
             
-            const decodedData = decoder.decodeFrame(opusData);
-            
-            if (!decodedData || decodedData.channelData.length === 0) {
+            // Decode returns PCM S16LE Buffer
+            const decodedBuffer = decoder.decode(opusData);
+            if (!decodedBuffer || decodedBuffer.length === 0) {
                 logger.debug(`No decoded data for call ${callId} (${audioType})`);
                 return null;
             }
 
-            // Convert Float32Array to Int16 PCM for OpenAI
-            const pcmData = this.convertFloat32ToInt16(decodedData.channelData[0]);
+            // Convert Buffer (S16LE) to Int16Array for downstream consumers
+            const pcmData = new Int16Array(
+                decodedBuffer.buffer,
+                decodedBuffer.byteOffset,
+                Math.floor(decodedBuffer.byteLength / 2)
+            );
             
-            // Enhanced logging to debug frame size issues
-            const sr = (decodedData.sampleRate || (decoder && decoder.sampleRate)) || 48000;
-            const expectedSamples = Math.floor(sr * 0.01); // 10ms at actual sample rate
+            // Enhanced logging to debug frame size issues (assume provided sampleRate)
+            const sr = sampleRate || 48000;
+            const expectedSamples = Math.floor(sr * 0.01); // ~10ms frame
             const actualSamples = pcmData.length;
             const frameDuration = actualSamples / sr; // Duration in seconds
             const speedRatio = expectedSamples / actualSamples;
@@ -91,9 +88,8 @@ class BackendOpusDecoder {
             // Remove any decoders whose key starts with `${callId}:`
             for (const [key, decoder] of this.decoders.entries()) {
                 if (key.startsWith(`${callId}:`)) {
-                    try { decoder.free(); } catch {}
                     this.decoders.delete(key);
-                    logger.info(`Opus decoder cleaned up for call ${callId} (key=${key})`);
+                    logger.info(`@discordjs/opus decoder cleaned up for call ${callId} (key=${key})`);
                 }
             }
         } catch (error) {
@@ -103,13 +99,8 @@ class BackendOpusDecoder {
 
     // Cleanup all decoders
     cleanup() {
-        for (const [callId, decoder] of this.decoders.entries()) {
-            try {
-                decoder.free();
-                logger.info(`Opus decoder cleaned up for call ${callId}`);
-            } catch (error) {
-                logger.error(`Error cleaning up decoder for call ${callId}:`, error);
-            }
+        for (const [callId] of this.decoders.entries()) {
+            logger.info(`@discordjs/opus decoder cleaned up for call ${callId}`);
         }
         this.decoders.clear();
     }

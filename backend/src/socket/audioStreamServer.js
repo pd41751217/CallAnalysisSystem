@@ -91,7 +91,7 @@ class AudioStreamServer {
         audioData: data.audioData,
         audioType: data.audioType,
         timestamp: data.timestamp || new Date().toISOString(),
-        sampleRate: data.sampleRate || 24000,
+        sampleRate: data.sampleRate || 48000,
         bitsPerSample: data.bitsPerSample || 16,
         channels: data.channels || 2
       });

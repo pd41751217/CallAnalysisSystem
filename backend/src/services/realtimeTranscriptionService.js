@@ -45,26 +45,50 @@ class RealtimeTranscriptionService {
         this.opusDecoder = new BackendOpusDecoder();
     }
 
+    // Initialize a brief startup connection to validate OpenAI Realtime readiness
+    initializeOnStartup() {
+        try {
+            if (process.env.OPENAI_REALTIME_INIT_ON_START === 'false') {
+                logger.info('Skipping OpenAI Realtime startup initialization (env disabled)');
+                return;
+            }
+            const startupCallId = '_startup_healthcheck_';
+            const ws = this.connectRealtimeSession(startupCallId, 'mic');
+            // Close shortly after open to avoid holding resources
+            ws.on('open', () => {
+                logger.info('OpenAI Realtime startup healthcheck connected');
+                try { ws.close(); } catch {}
+            });
+            ws.on('close', () => {
+                logger.info('OpenAI Realtime startup healthcheck closed');
+            });
+            ws.on('error', (err) => {
+                logger.error('OpenAI Realtime startup healthcheck error:', err);
+            });
+        } catch (err) {
+            logger.error('Failed initializing OpenAI Realtime on startup:', err);
+        }
+    }
+
     // Connect to OpenAI Realtime API for a specific call and audio type
     connectRealtimeSession(callId, audioType = 'mic') {
-        // const model = process.env.OPENAI_REALTIME_MODEL || 'gpt-realtime';
-        // const url = `wss://api.openai.com/v1/realtime?model=${encodeURIComponent(model)}`;
-
-        // const openaiWs = new WebSocket(url, {
-        //     headers: {
-        //         Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-        //         'OpenAI-Beta': 'realtime=v1',
-        //     },
-        // });
+        const model = process.env.OPENAI_REALTIME_MODEL || 'gpt-realtime';
+        const url = `wss://api.openai.com/v1/realtime?model=${encodeURIComponent(model)}`;
+        const openaiWs = new WebSocket(url, {
+            headers: {
+                Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+                'OpenAI-Beta': 'realtime=v1',
+            },
+        });
         
-        const openaiWs = new WebSocket(
-            "wss://api.openai.com/v1/realtime?intent=transcription",
-            [
-                "realtime",
-                `openai-insecure-api-key.${process.env.OPENAI_API_KEY}`,
-                "openai-beta.realtime-v1",
-            ]
-        );
+        // const openaiWs = new WebSocket(
+        //     "wss://api.openai.com/v1/realtime?intent=transcription",
+        //     [
+        //         "realtime",
+        //         `openai-insecure-api-key.${process.env.OPENAI_API_KEY}`,
+        //         "openai-beta.realtime-v1",
+        //     ]
+        // );
 
         // Store connection based on audio type
         if (audioType === 'mic') {
@@ -110,44 +134,43 @@ class RealtimeTranscriptionService {
         const vadThreshold = Number(process.env.VAD_THRESHOLD || 0.5);
         const vadPrefixPaddingMs = Number(process.env.VAD_PREFIX_PADDING_MS || 300);
         const vadSilenceDurationMs = Number(process.env.VAD_SILENCE_DURATION_MS || 500);
-        const rate = Number(process.env.AUDIO_RATE || 24000);
 
         // Use clean transcription prompt without descriptive text
         const audioTypePrompt = process.env.TRANSCRIPTION_PROMPT || 'Transcribe the speech accurately.';
 
-        // const sessionUpdate = {
-        //     type: 'session.update',
-        //     session: {
-        //         // Configure transcription-only behavior
-        //         model: transcriptionModel,
-        //         input_audio_format: 'pcm16',
-        //         input_audio_transcription: {
-        //             model: transcriptionModel,
-        //             language: 'en',
-        //             prompt: audioTypePrompt
-        //         },
-        //         turn_detection: process.env.VAD_ENABLED === 'false' ? null : {
-        //             type: 'server_vad',
-        //             threshold: vadThreshold,
-        //             prefix_padding_ms: vadPrefixPaddingMs,
-        //             silence_duration_ms: vadSilenceDurationMs,
-        //         }
-        //     }
-        // };
         const sessionUpdate = {
-            type: "transcription_session.update",
+            type: 'session.update',
             session: {
+                // Configure transcription-only behavior
+                model: transcriptionModel,
+                input_audio_format: 'pcm16',
                 input_audio_transcription: {
-                    model: "gpt-4o-transcribe",
-                    language: "en",
+                    model: transcriptionModel,
+                    language: language,
+                    prompt: audioTypePrompt
                 },
-                input_audio_noise_reduction: { type: "near_field" },
-                turn_detection: {
-                    type: "semantic_vad",
-                    eagerness: "low",
-                },
-            },
+                turn_detection: process.env.VAD_ENABLED === 'false' ? null : {
+                    type: 'server_vad',
+                    threshold: vadThreshold,
+                    prefix_padding_ms: vadPrefixPaddingMs,
+                    silence_duration_ms: vadSilenceDurationMs,
+                }
+            }
         };
+        // const sessionUpdate = {
+        //     type: "transcription_session.update",
+        //     session: {
+        //         input_audio_transcription: {
+        //             model: "gpt-4o-transcribe",
+        //             language: "en",
+        //         },
+        //         input_audio_noise_reduction: { type: "near_field" },
+        //         turn_detection: {
+        //             type: "semantic_vad",
+        //             eagerness: "low",
+        //         },
+        //     },
+        // };
 
         this.safeSend(openaiWs, JSON.stringify(sessionUpdate));
         logger.info(`Session configured for call ${callId} (${audioType})`);
@@ -202,23 +225,10 @@ class RealtimeTranscriptionService {
     }
 
     // Send audio data to OpenAI for transcription
-    async sendAudioData(callId, audioData, sampleRate = 24000, channels = 1, audioType = 'mic') {
-        let openaiWs;
-        
-        // Get the appropriate WebSocket connection based on audio type
-        if (audioType === 'mic') {
-            openaiWs = this.micTranscriptionSessions.get(callId);
-        } else if (audioType === 'speaker') {
-            openaiWs = this.speakerTranscriptionSessions.get(callId);
-        }
-        
-        if (!openaiWs || openaiWs.readyState !== WebSocket.OPEN) {
-            logger.warn(`No active OpenAI connection for call ${callId} (${audioType})`);
-            return;
-        }
-
+    async sendAudioData(callId, audioData, sampleRate = 48000, channels = 1, audioType = 'mic') {
         try {
             // Initialize Opus decoder if not already done (per stream)
+            // Force 48kHz sample rate to match C++ configuration
             await this.opusDecoder.initializeDecoder(callId, sampleRate, channels, audioType);
             
             // Convert base64 audio data to buffer
@@ -235,7 +245,7 @@ class RealtimeTranscriptionService {
             }
             
             // Decode Opus data to PCM (per stream)
-            const pcmData = await this.opusDecoder.decodeOpusData(callId, opusBuffer, audioType);
+            const pcmData = await this.opusDecoder.decodeOpusData(callId, opusBuffer, sampleRate, channels, audioType);
             if (!pcmData) {
                 logger.warn(`[AUDIO DEBUG] No PCM data decoded for call ${callId} (${audioType})`);
                 return;
@@ -247,17 +257,22 @@ class RealtimeTranscriptionService {
                 return;
             }
 
-            // Optionally save outgoing PCM to WAV file for debugging
+            // Optionally save outgoing PCM to WAV file for debugging (unconditional - before OpenAI check)
+            // This ensures all audio is captured even if OpenAI connection isn't ready yet
             if (process.env.DEBUG_SAVE_OUTGOING_AUDIO === 'true') {
                 try {
                     const session = this.activeSessions.get(callId) || {};
-                    // Prepare debug directory and file path once per call
-                    if (!session.debugAudioInitialized) {
+                    // Prepare debug directory and file path once per call and audio type
+                    const debugKey = `debugAudioInitialized_${audioType}`;
+                    const debugPathKey = `debugAudioPath_${audioType}`;
+                    const debugBytesKey = `debugBytesWritten_${audioType}`;
+                    
+                    if (!session[debugKey]) {
                         const debugDir = path.join(__dirname, '../../uploads/audio/debug');
                         if (!fs.existsSync(debugDir)) {
                             fs.mkdirSync(debugDir, { recursive: true });
                         }
-                        const debugFilePath = path.join(debugDir, `outgoing_call_${callId}.wav`);
+                        const debugFilePath = path.join(debugDir, `call_${callId}_${audioType}.wav`);
                         // If file exists from a previous run, remove it to start fresh
                         if (fs.existsSync(debugFilePath)) {
                             try { fs.unlinkSync(debugFilePath); } catch {}
@@ -268,27 +283,41 @@ class RealtimeTranscriptionService {
                         const placeholderHeader = buildWavHeader(0, sampleRate, wavChannels);
                         fs.writeFileSync(debugFilePath, placeholderHeader);
 
-                        session.debugAudioInitialized = true;
-                        session.debugAudioPath = debugFilePath;
-                        session.debugBytesWritten = 0;
+                        session[debugKey] = true;
+                        session[debugPathKey] = debugFilePath;
+                        session[debugBytesKey] = 0;
                         session.debugSampleRate = sampleRate;
                         session.debugChannels = 1;
                         this.activeSessions.set(callId, session);
-                        logger.info(`Debug audio capture (WAV) enabled for call ${callId}: ${debugFilePath} (${sampleRate}Hz, 1ch, PCM16)`);
+                        logger.info(`Debug audio capture (WAV) enabled for call ${callId} (${audioType}): ${debugFilePath} (${sampleRate}Hz, 1ch, PCM16)`);
                     }
-                    if (session.debugAudioPath) {
+                    if (session[debugPathKey]) {
                         const pcmBuffer = Buffer.from(pcmData.buffer, pcmData.byteOffset, pcmData.byteLength);
-                        fs.appendFile(session.debugAudioPath, pcmBuffer, (err) => {
+                        fs.appendFile(session[debugPathKey], pcmBuffer, (err) => {
                             if (err) {
-                                logger.error(`Failed appending debug audio for call ${callId}:`, err);
+                                logger.error(`Failed appending debug audio for call ${callId} (${audioType}):`, err);
                             }
                         });
-                        session.debugBytesWritten = (session.debugBytesWritten || 0) + pcmBuffer.length;
+                        session[debugBytesKey] = (session[debugBytesKey] || 0) + pcmBuffer.length;
                         this.activeSessions.set(callId, session);
                     }
                 } catch (dbgErr) {
-                    logger.error(`Error during debug audio saving for call ${callId}:`, dbgErr);
+                    logger.error(`Error during debug audio saving for call ${callId} (${audioType}):`, dbgErr);
                 }
+            }
+
+            // Get the appropriate WebSocket connection based on audio type
+            let openaiWs;
+            if (audioType === 'mic') {
+                openaiWs = this.micTranscriptionSessions.get(callId);
+            } else if (audioType === 'speaker') {
+                openaiWs = this.speakerTranscriptionSessions.get(callId);
+            }
+            
+            // Only send to OpenAI if connection is open (but WAV is already saved above)
+            if (!openaiWs || openaiWs.readyState !== WebSocket.OPEN) {
+                logger.debug(`No active OpenAI connection for call ${callId} (${audioType}) - audio decoded and saved to WAV but not sent to OpenAI`);
+                return;
             }
 
             // Convert to base64 using the exact typed array slice
@@ -388,18 +417,24 @@ class RealtimeTranscriptionService {
         // Cleanup Opus decoder
         this.opusDecoder.cleanupDecoder(callId);
 
-        // Finalize WAV header if debug capture was enabled
+        // Finalize WAV headers if debug capture was enabled for both mic and speaker
         try {
-            if (session.debugAudioPath && typeof session.debugBytesWritten === 'number') {
-                const totalBytes = session.debugBytesWritten;
-                const header = buildWavHeader(totalBytes, session.debugSampleRate || 24000, session.debugChannels || 1);
-                const fd = fs.openSync(session.debugAudioPath, 'r+');
-                fs.writeSync(fd, header, 0, 44, 0);
-                fs.closeSync(fd);
-                logger.info(`Finalized WAV debug file for call ${callId}: ${session.debugAudioPath} (${totalBytes} bytes of PCM)`);
+            const audioTypes = ['mic', 'speaker'];
+            for (const audioType of audioTypes) {
+                const debugPathKey = `debugAudioPath_${audioType}`;
+                const debugBytesKey = `debugBytesWritten_${audioType}`;
+                
+                if (session[debugPathKey] && typeof session[debugBytesKey] === 'number') {
+                    const totalBytes = session[debugBytesKey];
+                    const header = buildWavHeader(totalBytes, session.debugSampleRate || 48000, session.debugChannels || 1);
+                    const fd = fs.openSync(session[debugPathKey], 'r+');
+                    fs.writeSync(fd, header, 0, 44, 0);
+                    fs.closeSync(fd);
+                    logger.info(`Finalized WAV debug file for call ${callId} (${audioType}): ${session[debugPathKey]} (${totalBytes} bytes of PCM)`);
+                }
             }
         } catch (finalizeErr) {
-            logger.error(`Failed to finalize WAV debug file for call ${callId}:`, finalizeErr);
+            logger.error(`Failed to finalize WAV debug files for call ${callId}:`, finalizeErr);
         }
 
         this.activeSessions.delete(callId);

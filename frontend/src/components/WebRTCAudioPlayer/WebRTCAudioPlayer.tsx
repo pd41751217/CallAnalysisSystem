@@ -10,8 +10,7 @@ import {
 import {
   VolumeUp as VolumeUpIcon,
   VolumeOff as VolumeOffIcon,
-  Refresh as RefreshIcon,
-  Clear as ClearIcon
+  Refresh as RefreshIcon
 } from '@mui/icons-material';
 import { OpusDecoder } from 'opus-decoder';
 import './WebRTCAudioPlayer.css';
@@ -61,14 +60,10 @@ const WebRTCAudioPlayer: React.FC<WebRTCAudioPlayerProps> = ({
   });
   const [isMuted, setIsMuted] = useState(false);
   const [volume, setVolume] = useState(0.6); // Default volume to 60%
-  const [transcription, setTranscription] = useState<string>('');
-  const [isTranscribing, setIsTranscribing] = useState(false);
   
   // Opus decoder for handling compressed audio
-  const opusDecoderRef = useRef<OpusDecoder<24000> | null>(null);
+  const opusDecoderRef = useRef<OpusDecoder<48000> | null>(null);
   
-  // Speech recognition for live transcription
-  const speechRecognitionRef = useRef<any>(null);
   
   
   // Audio scheduling state - separate timing for mic and speaker
@@ -93,88 +88,7 @@ const WebRTCAudioPlayer: React.FC<WebRTCAudioPlayerProps> = ({
     console.log('🎵 Audio timing reset for both mic and speaker');
   }, []);
 
-  // Initialize speech recognition for live transcription
-  const initializeSpeechRecognition = useCallback(() => {
-    try {
-      // Check if browser supports speech recognition
-      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      
-      if (SpeechRecognition) {
-        speechRecognitionRef.current = new SpeechRecognition();
-        speechRecognitionRef.current.continuous = true;
-        speechRecognitionRef.current.interimResults = true;
-        speechRecognitionRef.current.lang = 'en-US';
-        
-        speechRecognitionRef.current.onresult = (event: any) => {
-          let finalTranscript = '';
-          let interimTranscript = '';
-          
-          for (let i = event.resultIndex; i < event.results.length; i++) {
-            const transcript = event.results[i][0].transcript;
-            if (event.results[i].isFinal) {
-              finalTranscript += transcript;
-            } else {
-              interimTranscript += transcript;
-            }
-          }
-          
-          if (finalTranscript) {
-            setTranscription(finalTranscript);
-            setIsTranscribing(false);
-          } else if (interimTranscript) {
-            setTranscription(interimTranscript);
-            setIsTranscribing(true);
-          }
-        };
-        
-        speechRecognitionRef.current.onerror = (event: any) => {
-          console.error('Speech recognition error:', event.error);
-          setIsTranscribing(false);
-        };
-        
-        speechRecognitionRef.current.onend = () => {
-          // Restart recognition if it ends
-          if (connectionState.connected) {
-            speechRecognitionRef.current?.start();
-          }
-        };
-        
-        console.log('🎤 Speech recognition initialized');
-      } else {
-        console.warn('⚠️ Speech recognition not supported in this browser');
-      }
-    } catch (error) {
-      console.error('❌ Failed to initialize speech recognition:', error);
-    }
-  }, [connectionState.connected]);
 
-  // Mock transcription function (fallback when speech recognition is not available)
-  const updateTranscription = useCallback((audioLevel: number) => {
-    if (!speechRecognitionRef.current && audioLevel > 0.1) { // Audio detected
-      setIsTranscribing(true);
-      
-      // Simulate transcription based on audio level
-      const mockTranscripts = [
-        "Hello, how are you today?",
-        "The weather is quite nice outside.",
-        "I'm working on the project right now.",
-        "Can you please repeat that?",
-        "Thank you for your help.",
-        "The meeting starts at 3 PM.",
-        "I'll send you the report soon.",
-        "That sounds like a good idea.",
-        "Let me check the schedule.",
-        "The system is working perfectly."
-      ];
-      
-      // Update transcription randomly to simulate live caption
-      setTimeout(() => {
-        const randomTranscript = mockTranscripts[Math.floor(Math.random() * mockTranscripts.length)];
-        setTranscription(randomTranscript);
-        setIsTranscribing(false);
-      }, 1000 + Math.random() * 2000); // Random delay 1-3 seconds
-    }
-  }, []);
 
   // Initialize WebRTC connection
   const initializeWebRTC = useCallback(async () => {
@@ -227,7 +141,7 @@ const WebRTCAudioPlayer: React.FC<WebRTCAudioPlayerProps> = ({
           // Set up audio context for analysis with correct sample rate
           if (!audioContextRef.current) {
             audioContextRef.current = new AudioContext({
-              sampleRate: 24000 // Match Opus decoder sample rate
+              sampleRate: 48000 // Match Opus decoder sample rate
             });
           }
           
@@ -306,8 +220,6 @@ const WebRTCAudioPlayer: React.FC<WebRTCAudioPlayerProps> = ({
       // Call audio level callback (with default implementation)
       audioLevelCallback(level);
       
-      // Update transcription based on audio level
-      updateTranscription(level);
       
       animationFrameRef.current = requestAnimationFrame(updateAudioLevel);
     };
@@ -347,7 +259,7 @@ const WebRTCAudioPlayer: React.FC<WebRTCAudioPlayerProps> = ({
           // Set up audio context for base64 streaming with correct sample rate
       if (!audioContextRef.current) {
         audioContextRef.current = new AudioContext({
-          sampleRate: 24000 // Match Opus decoder sample rate
+          sampleRate: 48000 // Match Opus decoder sample rate
         });
       }
     
@@ -398,7 +310,7 @@ const WebRTCAudioPlayer: React.FC<WebRTCAudioPlayerProps> = ({
         
         // Get audio parameters
         const channels = data.channels || 1;
-        const sampleRate = data.sampleRate || 24000;
+        const sampleRate = data.sampleRate || 48000;
         
         console.log('🎵 Decoding Opus audio:', {
           channels,
@@ -465,8 +377,6 @@ const WebRTCAudioPlayer: React.FC<WebRTCAudioPlayerProps> = ({
             audioLevel: audioLevel
           }));
           
-          // Update transcription based on audio level
-          updateTranscription(audioLevel);
           
           console.log(`🎵 ${audioType} audio level:`, audioLevel.toFixed(3), 'maxLevel:', maxLevel.toFixed(3));
         }
@@ -506,15 +416,6 @@ const WebRTCAudioPlayer: React.FC<WebRTCAudioPlayerProps> = ({
           console.log(`🎵 ${audioType} audio buffer finished playing`);
         };
         
-        // Start speech recognition when audio starts (for mic only)
-        if (audioType === 'mic' && speechRecognitionRef.current && connectionState.connected) {
-          try {
-            speechRecognitionRef.current.start();
-            console.log('🎤 Speech recognition started');
-          } catch (error) {
-            console.error('❌ Failed to start speech recognition:', error);
-          }
-        }
         
         // Schedule audio to play at the correct time
         const currentTime = audioContextRef.current.currentTime;
@@ -539,7 +440,7 @@ const WebRTCAudioPlayer: React.FC<WebRTCAudioPlayerProps> = ({
         if (audioContextRef.current.state === 'closed') {
           console.log('🎵 Audio context is closed, creating new one');
           audioContextRef.current = new AudioContext({
-            sampleRate: 24000
+            sampleRate: 48000
           });
           
           // Recreate analyser and gain node
@@ -645,7 +546,7 @@ const WebRTCAudioPlayer: React.FC<WebRTCAudioPlayerProps> = ({
         const initOpusDecoder = async () => {
           try {
             opusDecoderRef.current = new OpusDecoder({
-              sampleRate: 24000 as const, // Opus encoded at 24kHz
+              sampleRate: 48000 as const, // Opus encoded at 48kHz
               channels: 1,
               forceStereo: false
             });
@@ -658,8 +559,6 @@ const WebRTCAudioPlayer: React.FC<WebRTCAudioPlayerProps> = ({
       
               initOpusDecoder();
         
-        // Initialize speech recognition for live transcription
-        initializeSpeechRecognition();
         
         // Add click handler to resume audio context on user interaction
         const handleUserInteraction = async () => {
@@ -681,7 +580,7 @@ const WebRTCAudioPlayer: React.FC<WebRTCAudioPlayerProps> = ({
           try {
             if (!audioContextRef.current) {
               audioContextRef.current = new AudioContext({
-                sampleRate: 24000
+                sampleRate: 48000
               });
             }
             
@@ -695,12 +594,12 @@ const WebRTCAudioPlayer: React.FC<WebRTCAudioPlayerProps> = ({
             // Only play test tone if context is running
             if (audioContextRef.current.state === 'running') {
               // Create a simple test tone to verify audio is working
-              const testBuffer = audioContextRef.current.createBuffer(1, 240, 24000);
+              const testBuffer = audioContextRef.current.createBuffer(1, 480, 48000);
               const testData = testBuffer.getChannelData(0);
               
               // Generate a 440 Hz sine wave for 10ms
-              for (let i = 0; i < 240; i++) {
-                const time = i / 24000;
+              for (let i = 0; i < 480; i++) {
+                const time = i / 48000;
                 testData[i] = 0.3 * Math.sin(2 * Math.PI * 440 * time); // Louder test tone
               }
               
@@ -919,72 +818,6 @@ const WebRTCAudioPlayer: React.FC<WebRTCAudioPlayerProps> = ({
           </Box>
         </Box>
         
-        {/* Live Transcription Display */}
-        <Box
-          sx={{
-            mt: 2,
-            p: 2,
-            background: 'rgba(0, 0, 0, 0.3)',
-            borderRadius: 2,
-            border: '1px solid rgba(255, 255, 255, 0.2)',
-            minHeight: 60,
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'center'
-          }}
-        >
-          <Box display="flex" alignItems="center" justifyContent="space-between" mb={1}>
-            <Box display="flex" alignItems="center">
-              <Box
-                sx={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: '50%',
-                  background: isTranscribing ? '#4CAF50' : '#666',
-                  mr: 1,
-                  animation: isTranscribing ? 'pulse 1s infinite' : 'none'
-                }}
-              />
-              <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.8)', fontWeight: 600 }}>
-                Live Transcription
-              </Typography>
-            </Box>
-            
-            {transcription && (
-              <IconButton
-                size="small"
-                onClick={() => setTranscription('')}
-                sx={{
-                  color: 'rgba(255, 255, 255, 0.6)',
-                  '&:hover': { color: 'white' }
-                }}
-                title="Clear transcription"
-              >
-                <ClearIcon fontSize="small" />
-              </IconButton>
-            )}
-          </Box>
-          
-          <Typography
-            variant="body2"
-            sx={{
-              color: 'white',
-              fontFamily: 'monospace',
-              fontSize: '14px',
-              lineHeight: 1.4,
-              minHeight: 40,
-              display: 'flex',
-              alignItems: 'center',
-              wordBreak: 'break-word'
-            }}
-          >
-            {transcription || (
-              <span style={{ color: 'rgba(255, 255, 255, 0.5)', fontStyle: 'italic' }}>
-                {isTranscribing ? 'Listening...' : 'No audio detected'}
-              </span>
-            )}
-          </Typography>
-        </Box>
       </Box>
 
       <audio

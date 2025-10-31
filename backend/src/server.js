@@ -68,6 +68,11 @@ const webrtcServer = new WebRTCServer(io);
 app.set('audioStreamServer', audioStreamServer);
 app.set('webrtcServer', webrtcServer);
 
+// Initialize OpenAI Realtime service on startup (healthcheck)
+try {
+  webrtcServer?.transcriptionService?.initializeOnStartup();
+} catch {}
+
 // Test Supabase connection
 import { testSupabaseConnection } from './config/supabase.js';
 testSupabaseConnection().then((isConnected) => {
