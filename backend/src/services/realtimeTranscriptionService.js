@@ -136,7 +136,7 @@ class RealtimeTranscriptionService {
         const vadSilenceDurationMs = Number(process.env.VAD_SILENCE_DURATION_MS || 500);
 
         // Use clean transcription prompt without descriptive text
-        const audioTypePrompt = process.env.TRANSCRIPTION_PROMPT || 'Transcribe the speech accurately.';
+        const audioTypePrompt = process.env.TRANSCRIPTION_PROMPT || '';
 
         const sessionUpdate = {
             type: 'session.update',
@@ -146,7 +146,7 @@ class RealtimeTranscriptionService {
                 input_audio_format: 'pcm16',
                 input_audio_transcription: {
                     model: transcriptionModel,
-                    language: language,
+                    language,
                     prompt: audioTypePrompt
                 },
                 turn_detection: process.env.VAD_ENABLED === 'false' ? null : {
@@ -188,7 +188,7 @@ class RealtimeTranscriptionService {
             } else if (response.type === 'conversation.item.input_audio_transcription.delta') {
                 // Handle partial transcription
                 if (response.delta) {
-                    logger.debug(`[TRANSCRIPTION] Call ${callId} (${audioType}): ${response.delta}`);
+                    // logger.info(`[TRANSCRIPTION] Call ${callId} (${audioType}): ${response.delta}`);
                     // Emit partial transcription with audio type
                     // this.emitTranscriptionUpdate(callId, {
                     //     type: 'partial',
@@ -257,6 +257,14 @@ class RealtimeTranscriptionService {
                 return;
             }
 
+            // Downmix/resample to 16 kHz mono for STT
+            const targetSampleRate = 24000;
+            const resampledMonoPcm = this.resampleInt16Mono(pcmData, sampleRate, targetSampleRate);
+            if (!resampledMonoPcm || resampledMonoPcm.length === 0) {
+                logger.warn(`[AUDIO DEBUG] Resampling produced empty buffer for call ${callId} (${audioType})`);
+                return;
+            }
+
             // Optionally save outgoing PCM to WAV file for debugging (unconditional - before OpenAI check)
             // This ensures all audio is captured even if OpenAI connection isn't ready yet
             if (process.env.DEBUG_SAVE_OUTGOING_AUDIO === 'true') {
@@ -316,12 +324,12 @@ class RealtimeTranscriptionService {
             
             // Only send to OpenAI if connection is open (but WAV is already saved above)
             if (!openaiWs || openaiWs.readyState !== WebSocket.OPEN) {
-                logger.debug(`No active OpenAI connection for call ${callId} (${audioType}) - audio decoded and saved to WAV but not sent to OpenAI`);
+                logger.warn(`No active OpenAI connection for call ${callId} (${audioType}) - audio decoded and saved to WAV but not sent to OpenAI`);
                 return;
             }
 
             // Convert to base64 using the exact typed array slice
-            const base64 = Buffer.from(pcmData.buffer, pcmData.byteOffset, pcmData.byteLength).toString('base64');
+            const base64 = Buffer.from(resampledMonoPcm.buffer, resampledMonoPcm.byteOffset, resampledMonoPcm.byteLength).toString('base64');
             if (base64.length === 0) {
                 logger.warn(`[AUDIO DEBUG] Empty base64 data for call ${callId} (${audioType})`);
                 return;
@@ -508,6 +516,40 @@ class RealtimeTranscriptionService {
         this.micTranscriptionSessions.clear();
         this.speakerTranscriptionSessions.clear();
         this.opusDecoder.cleanup();
+    }
+
+    // Linear resampler for Int16 mono PCM to a target sample rate (e.g., 16 kHz)
+    // Assumes input is Int16Array mono at srcSampleRate
+    resampleInt16Mono(inputInt16, srcSampleRate, dstSampleRate) {
+        try {
+            if (!inputInt16 || inputInt16.length === 0) return inputInt16;
+            if (srcSampleRate === dstSampleRate) return inputInt16;
+
+            const srcLength = inputInt16.length;
+            const ratio = dstSampleRate / srcSampleRate;
+            const dstLength = Math.max(1, Math.floor(srcLength * ratio));
+
+            const output = new Int16Array(dstLength);
+            const scale = srcSampleRate / dstSampleRate;
+
+            for (let i = 0; i < dstLength; i++) {
+                const srcPos = i * scale;
+                const idx = Math.floor(srcPos);
+                const frac = srcPos - idx;
+
+                const s0 = inputInt16[idx] || 0;
+                const s1 = inputInt16[Math.min(idx + 1, srcLength - 1)] || 0;
+                const sample = s0 + (s1 - s0) * frac;
+                // Clamp to Int16
+                const clamped = Math.max(-32768, Math.min(32767, Math.round(sample)));
+                output[i] = clamped;
+            }
+
+            return output;
+        } catch (e) {
+            logger.error('Resampling failed:', e);
+            return inputInt16;
+        }
     }
 }
 
